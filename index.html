@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Conga Uruguaya Premium - Juego de Naipes Tradicional (Chinchón)</title>
+    <meta name="description" content="Juega a la Conga Uruguaya (Chinchón) con baraja española tradicional. Modos 1 vs 1 contra Inteligencia Artificial táctica y multijugador online en tiempo real.">
+    <meta name="theme-color" content="#0e381e">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="assets/icons/favicon-64.png">
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <!-- Barra Superior -->
+        <header id="top-bar">
+            <div class="brand-title">
+                <span>🎴</span>
+                <span>CONGA URUGUAYA</span>
+                <span id="room-code-tag" style="display:none; font-size:0.75rem; background:#b7950b; color:#000; padding:2px 6px; border-radius:4px; font-weight:bold;"></span>
+            </div>
+            <div class="top-actions">
+                <button id="btn-marcador" class="btn-icon" title="Ver Marcador">📊 Marcador</button>
+                <button id="btn-guia" class="btn-icon" title="Combinaciones">🎴 Juegos</button>
+                <button id="btn-reglamento" class="btn-icon" title="Reglas">📖 Reglas</button>
+                <button id="btn-config" class="btn-icon" title="Configuración">⚙️</button>
+                <button id="btn-salir" class="btn-icon" title="Salir al Lobby" style="display:none; background:#c0392b;">🚪</button>
+            </div>
+        </header>
+
+        <!-- Área Superior de Rivales -->
+        <section id="opponents-area"></section>
+
+        <!-- Centro de la Mesa: Mazo de Robo y Pozo de Descarte -->
+        <main id="center-table">
+            <!-- Mazo de Robo (Stock) -->
+            <div class="pile-container" id="stock-pile-container" title="Robar carta del mazo">
+                <div class="card-pile deck-pile" id="deck-pile-element">
+                    <div class="deck-counter-badge" id="deck-counter">0</div>
+                </div>
+                <span class="pile-label">📥 Mazo</span>
+            </div>
+
+            <!-- Pozo de Descarte (Discard Pile) -->
+            <div class="pile-container" id="discard-pile-container" title="Robar o descartar aquí">
+                <div class="card-pile discard-pile-card" id="discard-pile-element"></div>
+                <span class="pile-label">♻️ Pozo</span>
+            </div>
+        </main>
+
+        <!-- Banner de Estado y Turno -->
+        <div id="turn-status-banner">
+            <span id="turn-icon">⏳</span>
+            <span id="turn-text">Iniciando partida...</span>
+        </div>
+
+        <!-- Mano del Jugador -->
+        <section id="player-hand-container">
+            <div class="hand-fan" id="player-hand-fan"></div>
+        </section>
+
+        <!-- Barra de Acciones del Jugador -->
+        <footer id="player-actions-toolbar">
+            <div class="deadwood-indicator" id="deadwood-badge">
+                <span>Puntos sueltos:</span>
+                <strong id="deadwood-pts">0</strong>
+            </div>
+            <button id="btn-robar-mazo" class="btn-action btn-primary-action">📥 Robar Mazo</button>
+            <button id="btn-robar-pozo" class="btn-action">♻️ Robar Pozo</button>
+            <button id="btn-descartar" class="btn-action" disabled>🎴 Descartar</button>
+            <button id="btn-cortar" class="btn-action btn-cut-action" disabled>✂️ Cortar</button>
+            <button id="btn-auto-ordenar" class="btn-action">🃏 Auto-ordenar</button>
+        </footer>
+
+        <!-- Botón Flotante Siguiente Mano -->
+        <button id="btn-siguiente-mano">🃏 Siguiente Mano (3s)</button>
+    </div>
+
+    <!-- PANTALLA DE INICIO / LOBBY -->
+    <div id="start-screen">
+        <div class="hero-logo">
+            <span>🎴</span>
+            <span>CONGA URUGUAYA</span>
+        </div>
+        <p class="hero-subtitle">El auténtico juego criollo de baraja española (Chinchón). Forma escaleras, piernas y corta con menos de 5 puntos o haz Conga.</p>
+
+        <div class="menu-options-grid">
+            <button id="btn-start-1v1" class="menu-btn primary">🤖 Jugar 1 vs 1 (Contra IA)</button>
+            <button id="btn-start-4p" class="menu-btn">👥 4 Jugadores (Todos vs Todos)</button>
+            <button id="btn-crear-online" class="menu-btn">🌐 Crear Sala Online (Multijugador)</button>
+            <button id="btn-unirse-online" class="menu-btn">🔑 Unirse a Sala Online</button>
+            <button id="btn-ver-reglamento-lobby" class="menu-btn">📖 Reglamento Oficial</button>
+        </div>
+
+        <div id="lobby-salas-publicas" style="margin-top:20px; width:100%; max-width:380px; text-align:left;">
+            <div style="font-size:0.9rem; color:var(--gold); font-weight:bold; margin-bottom:8px;">Salas Públicas en Vivo:</div>
+            <div id="lista-salas-container" style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;">
+                <div style="color:#888; font-size:0.85rem; text-align:center;">Buscando salas disponibles...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REGLAMENTO -->
+    <div class="modal-overlay" id="modal-reglamento">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">📖 Reglamento de la Conga Uruguaya</h3>
+                <button class="modal-close-btn" data-close="modal-reglamento">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Objetivo del Juego:</strong> Ligar tus 7 cartas en combinaciones válidas (escaleras del mismo palo o piernas/tríos del mismo número) y cortar con la menor cantidad de puntos sueltos posible. Los jugadores acumulan puntos ronda tras ronda y son eliminados al superar los 100 puntos.</p>
+
+                <h4 style="color:var(--gold);">1. Turno de Juego:</h4>
+                <ul style="padding-left:18px;">
+                    <li><strong>Robo:</strong> En tu turno robas 1 carta (del mazo oculto o la carta superior del pozo de descarte).</li>
+                    <li><strong>Descarte / Corte:</strong> Te quedas con 8 cartas momentáneamente y debes tirar 1 carta al pozo. Si cumples la condición de corte, puedes <em>Cortar</em> en lugar de pasar el turno.</li>
+                </ul>
+
+                <h4 style="color:var(--gold);">2. Combinaciones Válidas (Juegos):</h4>
+                <ul style="padding-left:18px;">
+                    <li><strong>Escalera (Run):</strong> 3 o más cartas consecutivas del mismo palo (ej: 4, 5 y 6 de Espadas).</li>
+                    <li><strong>Pierna / Trío / Cuarteto:</strong> 3 o 4 cartas del mismo número de palos distintos (ej: tres 7s).</li>
+                    <li><strong>Comodín:</strong> Sustituye a cualquier carta para completar una combinación.</li>
+                </ul>
+
+                <h4 style="color:var(--gold);">3. Condiciones para Cortar:</h4>
+                <ul style="padding-left:18px;">
+                    <li><strong>Corte Normal:</strong> Descartar 1 carta y que la suma de tus cartas sueltas sea de <strong>5 puntos o menos</strong>.</li>
+                    <li><strong>Corte en 0 (-10 Puntos):</strong> Ligar todas las 7 cartas (ej: 4 y 3 ligadas). ¡Restas 10 puntos de tu marcador!</li>
+                    <li><strong>¡CONGA LIMPIA! (Chinchón):</strong> Escalera corrida de 7 cartas del mismo palo sin comodín. ¡Ganas la partida inmediatamente!</li>
+                    <li><strong>Conga con Comodín:</strong> Escalera corrida de 7 cartas con 1 comodín. ¡Restas 25 puntos!</li>
+                </ul>
+
+                <h4 style="color:var(--gold);">4. Acomodo y Castigo al Cortador:</h4>
+                <ul style="padding-left:18px;">
+                    <li>Si el cortador corta con cartas sueltas (1 a 5 pts), los rivales pueden <strong>acomodar</strong> sus cartas sueltas en las combinaciones del cortador para reducir sus puntos.</li>
+                    <li><strong>¡Pasaron al cortador!</strong> Si algún rival empata o tiene menos puntos que el que cortó, el cortador sufre un <strong>castigo de +10 puntos de recargo</strong>, y el rival se anota 0 puntos.</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-primary-action" data-close="modal-reglamento">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GUÍA DE COMBINACIONES -->
+    <div class="modal-overlay" id="modal-guia">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">🎴 Combinaciones y Valores</h3>
+                <button class="modal-close-btn" data-close="modal-guia">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:10px;">
+                    <h4 style="color:var(--gold); margin-bottom:6px;">Escalera (Mismo Palo)</h4>
+                    <p style="font-size:0.85rem;">3 o más cartas correlativas: <strong>1, 2, 3</strong> o <strong>10, 11, 12</strong> de un mismo palo. El comodín puede colocarse en cualquier extremo o en el centro.</p>
+                </div>
+                <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:10px;">
+                    <h4 style="color:var(--gold); margin-bottom:6px;">Pierna / Trío (Mismo Valor)</h4>
+                    <p style="font-size:0.85rem;">3 o 4 cartas del mismo número pero de palos distintos: ej. <strong>5 de Oro, 5 de Copa, 5 de Basto</strong>.</p>
+                </div>
+                <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:10px;">
+                    <h4 style="color:var(--gold); margin-bottom:6px;">Valores de Cartas Sueltas</h4>
+                    <ul style="padding-left:18px; font-size:0.85rem;">
+                        <li><strong>As (1):</strong> 1 punto</li>
+                        <li><strong>2 al 9:</strong> Su valor numérico</li>
+                        <li><strong>Figuras (10, 11, 12):</strong> 10 puntos cada una</li>
+                        <li><strong>Comodín sin ligar:</strong> 25 puntos</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-primary-action" data-close="modal-guia">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL MARCADOR GENERAL -->
+    <div class="modal-overlay" id="modal-marcador">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">📊 Marcador del Partido</h3>
+                <button class="modal-close-btn" data-close="modal-marcador">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="marcador-tabla-container" style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:center;">
+                        <thead>
+                            <tr style="border-bottom:2px solid var(--gold); color:var(--gold);">
+                                <th style="padding:8px;">Jugador</th>
+                                <th style="padding:8px;">Puntos Acumulados</th>
+                                <th style="padding:8px;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="marcador-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-primary-action" data-close="modal-marcador">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIGURACIÓN -->
+    <div class="modal-overlay" id="modal-config">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">⚙️ Configuración del Juego</h3>
+                <button class="modal-close-btn" data-close="modal-config">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Tu Nombre:</span>
+                    <input type="text" id="cfg-nombre" value="TÚ" maxlength="15" style="padding:6px 10px; border-radius:6px; border:1px solid #555; background:#111; color:#fff;">
+                </label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Límite de Puntos:</span>
+                    <select id="cfg-limite-puntos" style="padding:6px 10px; border-radius:6px; border:1px solid #555; background:#111; color:#fff;">
+                        <option value="50">50 Puntos (Rápida)</option>
+                        <option value="100" selected>100 Puntos (Estándar)</option>
+                        <option value="150">150 Puntos (Larga)</option>
+                    </select>
+                </label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Tamaño de Baraja:</span>
+                    <select id="cfg-deck-size" style="padding:6px 10px; border-radius:6px; border:1px solid #555; background:#111; color:#fff;">
+                        <option value="48" selected>48 Cartas (Con 8 y 9)</option>
+                        <option value="40">40 Cartas (Sin 8 y 9)</option>
+                    </select>
+                </label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Comodines en el mazo:</span>
+                    <input type="checkbox" id="cfg-comodines" checked style="width:20px; height:20px;">
+                </label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Sonido y Efectos:</span>
+                    <input type="checkbox" id="cfg-sonido" checked style="width:20px; height:20px;">
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-primary-action" id="btn-guardar-config">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL FIN DE RONDA -->
+    <div class="modal-overlay" id="modal-fin-ronda">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title" id="fin-ronda-title">🏆 Fin de Ronda</h3>
+            </div>
+            <div class="modal-body" id="fin-ronda-body">
+                <!-- Se inyecta dinámicamente los melds y puntos de todos -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-cut-action" id="btn-cerrar-fin-ronda" style="width:100%; justify-content:center;">Continuar a Siguiente Mano</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SALAS ONLINE (CREAR / UNIRSE) -->
+    <div class="modal-overlay" id="modal-sala">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-sala-title">🌐 Sala Online</h3>
+                <button class="modal-close-btn" data-close="modal-sala">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-sala-body">
+                <div id="form-unirse-sala" style="display:none; flex-direction:column; gap:12px;">
+                    <label>Ingresa el Código de Sala (Ej: CG-A89F):</label>
+                    <input type="text" id="input-codigo-sala" placeholder="CG-XXXX" maxlength="10" style="padding:10px; font-size:1.1rem; text-transform:uppercase; text-align:center; border-radius:8px; border:2px solid var(--gold); background:#0a1a0f; color:#fff;">
+                    <button class="btn-action btn-primary-action" id="btn-confirmar-unirse" style="justify-content:center;">Entrar a la Sala</button>
+                </div>
+                <div id="info-sala-espera" style="display:none; text-align:center;">
+                    <div style="font-size:0.9rem; color:#ccc;">Código de Invitación:</div>
+                    <div id="sala-codigo-display" style="font-size:2rem; font-weight:900; color:var(--gold); margin:8px 0; letter-spacing:2px;"></div>
+                    <p style="font-size:0.85rem; color:#aaa;">Comparte este código con tus amigos para que se unan a la partida.</p>
+                    <div id="sala-lista-jugadores" style="margin:16px 0; display:flex; flex-direction:column; gap:6px;"></div>
+                    <button class="btn-action btn-cut-action" id="btn-host-iniciar" style="width:100%; justify-content:center; display:none;">¡Comenzar Partida!</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts de la Aplicación -->
+    <script src="js/engine/CongaEngine.js"></script>
+    <script src="js/engine/CongaBot.js"></script>
+    <script src="js/soundmanager.js"></script>
+    <script src="js/firebasemanager.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

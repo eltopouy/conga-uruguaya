@@ -1,0 +1,25 @@
+{
+  "name": "conga-uruguaya",
+  "version": "1.0.0",
+  "description": "Simulador de Conga Uruguaya (Chinchón) con Baraja Española, Inteligencia Artificial y Multijugador en Tiempo Real",
+  "main": "js/app.js",
+  "scripts": {
+    "test": "node test/conga.test.js && node test/e2e.test.js",
+    "test:browser": "node test/browser.test.js",
+    "test:all": "node test/conga.test.js && node test/e2e.test.js && node test/browser.test.js"
+  },
+  "keywords": [
+    "conga",
+    "conga-uruguaya",
+    "chinchon",
+    "juego-de-cartas",
+    "baraja-espanola",
+    "multiplayer",
+    "firebase"
+  ],
+  "author": "Andrés Franchi Ugartemendía",
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
