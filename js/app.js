@@ -8,6 +8,8 @@ window.engine = engine;
 window.sound = sound;
 
 let modoJuego = 'singleplayer'; // 'singleplayer' | 'multiplayer'
+let miSeat = 0;
+let miRol = 'creador'; // 'creador' | 'invitado'
 let selectedCardIndex = null;
 let autoAdvanceInterval = null;
 let isBotThinking = false;
@@ -62,7 +64,7 @@ function guardarConfigLocal() {
         }));
 
         cerrarModal('modal-config');
-        if (engine.players[0]) engine.players[0].name = cfgName;
+        if (engine.players[miSeat]) engine.players[miSeat].name = cfgName;
         renderJuego();
     } catch (e) {}
 }
@@ -72,6 +74,8 @@ function guardarConfigLocal() {
 // -------------------------------------------------------------
 window.iniciarSolo = function(numJugadores = 2) {
     modoJuego = 'singleplayer';
+    miSeat = 0;
+    miRol = 'creador';
     selectedCardIndex = null;
     ocultarBotonSiguienteMano();
 
@@ -96,17 +100,23 @@ function salirAlLobby() {
     }
     ocultarBotonSiguienteMano();
     isBotThinking = false;
+    engine.partidoIniciado = false;
+    selectedCardIndex = null;
+    modoJuego = 'singleplayer';
+    miSeat = 0;
+    miRol = 'creador';
     document.getElementById('start-screen').style.display = 'flex';
     document.getElementById('btn-salir').style.display = 'none';
     document.getElementById('room-code-tag').style.display = 'none';
+    document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
 }
 
 // -------------------------------------------------------------
 // CONTROLADOR DE TURNO DEL BOT
 // -------------------------------------------------------------
 async function verificarTurnoBot() {
-    if (modoJuego !== 'singleplayer') return;
-    if (engine.fase === 'fin_ronda' || engine.partidoFinalizado) return;
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') return;
+    if (!engine || !engine.partidoIniciado || engine.fase === 'fin_ronda' || engine.partidoFinalizado) return;
 
     const currentSeat = engine.turnoSeat;
     const currentPlayer = engine.players[currentSeat];
@@ -119,6 +129,10 @@ async function verificarTurnoBot() {
 
     // Tiempo de pensamiento natural (1s - 1.6s)
     await new Promise(r => setTimeout(r, 1100 + Math.random() * 500));
+    if (!engine || !engine.partidoIniciado || (modoJuego === 'multiplayer' && miRol !== 'creador')) {
+        isBotThinking = false;
+        return;
+    }
 
     // 1. Paso 1: Robar (Mazo o Pozo)
     if (engine.fase === 'robar' && engine.turnoSeat === currentSeat) {
@@ -130,11 +144,16 @@ async function verificarTurnoBot() {
             engine.robarMazo(currentSeat);
             playSound('card-draw');
         }
+        if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
         renderJuego();
     }
 
     // Tiempo de decisión para el descarte
     await new Promise(r => setTimeout(r, 1000 + Math.random() * 400));
+    if (!engine || !engine.partidoIniciado || (modoJuego === 'multiplayer' && miRol !== 'creador')) {
+        isBotThinking = false;
+        return;
+    }
 
     // 2. Paso 2: Descartar o Cortar
     if (engine.fase === 'descartar' && engine.turnoSeat === currentSeat) {
@@ -145,6 +164,7 @@ async function verificarTurnoBot() {
                 const ok = engine.cortar(currentSeat, jugada.cardIndex);
                 if (ok) {
                     playSound('cut');
+                    if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
                     mostrarModalFinRonda();
                     isBotThinking = false;
                     return;
@@ -153,6 +173,7 @@ async function verificarTurnoBot() {
             // Descarte normal
             engine.descartarCarta(currentSeat, jugada.cardIndex);
             playSound('card-discard');
+            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
         }
     }
 
@@ -171,19 +192,26 @@ async function verificarTurnoBot() {
 function renderJuego() {
     if (!engine || !engine.partidoIniciado) return;
 
+    // GUARD: El botón de siguiente mano NUNCA debe mostrarse durante una mano activa ni tras terminar el partido
+    if (engine.fase !== 'fin_ronda' || engine.partidoFinalizado) {
+        ocultarBotonSiguienteMano();
+    }
+
     // 1. Rivales (Superior)
     const oppArea = document.getElementById('opponents-area');
     if (oppArea) {
         oppArea.innerHTML = '';
         engine.players.forEach(p => {
-            if (p.seat !== 0) {
+            if (p.seat !== miSeat) {
                 const badge = document.createElement('div');
                 badge.className = `opponent-badge ${engine.turnoSeat === p.seat ? 'active-turn' : ''}`;
                 
                 let miniCardsHTML = '';
                 const cardCount = p.hand.length;
                 for (let i = 0; i < cardCount; i++) {
-                    miniCardsHTML += '<div class="mini-card-back"></div>';
+                    const angle = (i - (cardCount - 1) / 2) * 5;
+                    const yOffset = Math.abs(i - (cardCount - 1) / 2) * 1.5;
+                    miniCardsHTML += `<div class="mini-card-back" style="transform: rotate(${angle}deg) translateY(${yOffset}px);"></div>`;
                 }
 
                 badge.innerHTML = `
@@ -198,10 +226,10 @@ function renderJuego() {
 
     // 2. Centro de la mesa: Mazo de Robo y Pozo
     const deckCountEl = document.getElementById('deck-counter');
-    if (deckCountEl) deckCountEl.innerText = engine.deck.length;
+    if (deckCountEl) deckCountEl.innerText = engine.deck ? engine.deck.length : 0;
 
     const deckEl = document.getElementById('deck-pile-element');
-    const isMyTurnToDraw = (engine.turnoSeat === 0 && engine.fase === 'robar');
+    const isMyTurnToDraw = (engine.turnoSeat === miSeat && engine.fase === 'robar');
     if (deckEl) {
         if (isMyTurnToDraw) deckEl.classList.add('highlight-draw');
         else deckEl.classList.remove('highlight-draw');
@@ -211,7 +239,7 @@ function renderJuego() {
     if (discardEl) {
         const topDiscard = engine.discardPile.length > 0 ? engine.discardPile[engine.discardPile.length - 1] : null;
         if (topDiscard) {
-            discardEl.style.backgroundImage = `url("${topDiscard.getAssetUrl()}")`;
+            discardEl.style.backgroundImage = `url("${topDiscard.getAssetUrl ? topDiscard.getAssetUrl() : ''}")`;
             discardEl.style.opacity = '1';
         } else {
             discardEl.style.backgroundImage = 'none';
@@ -228,7 +256,7 @@ function renderJuego() {
     const banner = document.getElementById('turn-status-banner');
     
     if (turnText && banner) {
-        if (engine.turnoSeat === 0) {
+        if (engine.turnoSeat === miSeat) {
             banner.classList.add('my-turn');
             turnIcon.innerText = "⭐";
             if (engine.fase === 'robar') {
@@ -239,14 +267,14 @@ function renderJuego() {
         } else {
             banner.classList.remove('my-turn');
             turnIcon.innerText = "⏳";
-            const botPlayer = engine.players[engine.turnoSeat];
-            turnText.innerText = `Turno de ${botPlayer ? botPlayer.name : 'Rival'}...`;
+            const activePlayer = engine.players[engine.turnoSeat];
+            turnText.innerText = `Turno de ${activePlayer ? activePlayer.name : 'Rival'}...`;
         }
     }
 
-    // 4. Mano del Jugador (Seat 0)
+    // 4. Mano del Jugador Local (Seat miSeat)
     const plyHandFan = document.getElementById('player-hand-fan');
-    const myPlayer = engine.players[0];
+    const myPlayer = engine.players[miSeat];
     if (plyHandFan && myPlayer) {
         plyHandFan.innerHTML = '';
         
@@ -259,7 +287,7 @@ function renderJuego() {
         myPlayer.hand.forEach((carta, idx) => {
             const cardEl = document.createElement('div');
             cardEl.className = 'hand-card';
-            cardEl.style.backgroundImage = `url("${carta.getAssetUrl()}")`;
+            cardEl.style.backgroundImage = `url("${carta.getAssetUrl ? carta.getAssetUrl() : ''}")`;
             cardEl.dataset.index = idx;
 
             // Inclinación suave en abanico
@@ -274,7 +302,7 @@ function renderJuego() {
             // Badge de ligada o suelta
             const badge = document.createElement('div');
             badge.className = `card-meld-badge ${meldedSet.has(carta.id) ? 'badge-ligada' : 'badge-suelta'}`;
-            badge.innerText = meldedSet.has(carta.id) ? "LIGADA" : `${carta.getPuntosSueltos()}p`;
+            badge.innerText = meldedSet.has(carta.id) ? "LIGADA" : `${carta.getPuntosSueltos ? carta.getPuntosSueltos() : 0}p`;
             cardEl.appendChild(badge);
 
             // Permitir arrastre y reordenamiento manual de la carta con mouse o touch
@@ -288,7 +316,7 @@ function renderJuego() {
         const deadwoodBadge = document.getElementById('deadwood-badge');
         if (deadwoodEl && deadwoodBadge) {
             deadwoodEl.innerText = `${analysis.puntosSueltos} pts`;
-            if (analysis.puntosSueltos <= (engine.config.limiteCorte || 5) && myPlayer.hand.length === 8 && engine.turnoSeat === 0 && engine.fase === 'descartar') {
+            if (analysis.puntosSueltos <= (engine.config.limiteCorte || 5) && myPlayer.hand.length === 8 && engine.turnoSeat === miSeat && engine.fase === 'descartar') {
                 deadwoodBadge.classList.add('can-cut-text');
                 deadwoodBadge.title = "¡Cumples las condiciones para Cortar!";
             } else {
@@ -303,7 +331,7 @@ function renderJuego() {
     const btnDescartar = document.getElementById('btn-descartar');
     const btnCortar = document.getElementById('btn-cortar');
 
-    const esMiTurno = (engine.turnoSeat === 0 && !myPlayer.eliminado);
+    const esMiTurno = (engine.turnoSeat === miSeat && myPlayer && !myPlayer.eliminado);
 
     if (btnRobarMazo) {
         btnRobarMazo.disabled = !(esMiTurno && engine.fase === 'robar');
@@ -315,7 +343,7 @@ function renderJuego() {
         btnDescartar.disabled = !(esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null);
     }
     if (btnCortar) {
-        const canCut = esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null && engine.puedeCortar(0, selectedCardIndex);
+        const canCut = esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null && engine.puedeCortar(miSeat, selectedCardIndex);
         btnCortar.disabled = !canCut;
         if (canCut) btnCortar.classList.add('can-cut');
         else btnCortar.classList.remove('can-cut');
@@ -326,7 +354,7 @@ function renderJuego() {
 // INTERACCIÓN DE JUGADOR HUMANO
 // -------------------------------------------------------------
 function seleccionarCarta(idx) {
-    if (engine.turnoSeat !== 0 || engine.fase !== 'descartar') return;
+    if (engine.turnoSeat !== miSeat || engine.fase !== 'descartar') return;
     if (selectedCardIndex === idx) {
         selectedCardIndex = null;
     } else {
@@ -470,7 +498,7 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
 
                 playSound('card-deal');
                 renderJuego();
-            } else if (dy < -80 && engine.turnoSeat === 0 && engine.fase === 'descartar') {
+            } else if (dy < -80 && engine.turnoSeat === miSeat && engine.fase === 'descartar') {
                 // Descarte rápido por arrastre vertical hacia arriba a la mesa
                 selectedCardIndex = index;
                 ejecutarDescarteHumano();
@@ -502,35 +530,55 @@ window.habilitarArrastreReorden = habilitarArrastreReorden;
 
 // Robar Mazo
 document.getElementById('btn-robar-mazo').addEventListener('click', () => {
-    if (engine.turnoSeat !== 0 || engine.fase !== 'robar') return;
-    engine.robarMazo(0);
-    playSound('card-draw');
-    renderJuego();
-});
-
-// Robar Pozo
-document.getElementById('btn-robar-pozo').addEventListener('click', () => {
-    if (engine.turnoSeat !== 0 || engine.fase !== 'robar') return;
-    engine.robarPozo(0);
-    playSound('card-draw');
-    renderJuego();
-});
-
-// Click directo en los pozos del centro
-document.getElementById('stock-pile-container').addEventListener('click', () => {
-    if (engine.turnoSeat === 0 && engine.fase === 'robar') {
-        engine.robarMazo(0);
+    if (engine.turnoSeat !== miSeat || engine.fase !== 'robar') return;
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        window.FirebaseManager.enviarAccion('robar_mazo');
+    } else {
+        engine.robarMazo(miSeat);
         playSound('card-draw');
+        if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
         renderJuego();
     }
 });
 
-document.getElementById('discard-pile-container').addEventListener('click', () => {
-    if (engine.turnoSeat === 0) {
-        if (engine.fase === 'robar') {
-            engine.robarPozo(0);
+// Robar Pozo
+document.getElementById('btn-robar-pozo').addEventListener('click', () => {
+    if (engine.turnoSeat !== miSeat || engine.fase !== 'robar') return;
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        window.FirebaseManager.enviarAccion('robar_pozo');
+    } else {
+        engine.robarPozo(miSeat);
+        playSound('card-draw');
+        if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+        renderJuego();
+    }
+});
+
+// Click directo en los pozos del centro
+document.getElementById('stock-pile-container').addEventListener('click', () => {
+    if (engine.turnoSeat === miSeat && engine.fase === 'robar') {
+        if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+            window.FirebaseManager.enviarAccion('robar_mazo');
+        } else {
+            engine.robarMazo(miSeat);
             playSound('card-draw');
+            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
             renderJuego();
+        }
+    }
+});
+
+document.getElementById('discard-pile-container').addEventListener('click', () => {
+    if (engine.turnoSeat === miSeat) {
+        if (engine.fase === 'robar') {
+            if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+                window.FirebaseManager.enviarAccion('robar_pozo');
+            } else {
+                engine.robarPozo(miSeat);
+                playSound('card-draw');
+                if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+                renderJuego();
+            }
         } else if (engine.fase === 'descartar' && selectedCardIndex !== null) {
             ejecutarDescarteHumano();
         }
@@ -539,32 +587,50 @@ document.getElementById('discard-pile-container').addEventListener('click', () =
 
 // Descartar Carta Seleccionada
 function ejecutarDescarteHumano() {
-    if (engine.turnoSeat !== 0 || engine.fase !== 'descartar' || selectedCardIndex === null) return;
+    if (engine.turnoSeat !== miSeat || engine.fase !== 'descartar' || selectedCardIndex === null) return;
+    const player = engine.players[miSeat];
+    const carta = player ? player.hand[selectedCardIndex] : null;
+    if (engine.origenRobo === 'pozo' && engine.cartaRobada && carta && carta.id === engine.cartaRobada.id) {
+        alert("Regla de Conga: No puedes tirar la misma carta que acabas de robar del pozo.");
+        return;
+    }
     const idx = selectedCardIndex;
     selectedCardIndex = null;
-    engine.descartarCarta(0, idx);
-    playSound('card-discard');
-    renderJuego();
 
-    verificarTurnoBot();
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        window.FirebaseManager.enviarAccion('descartar', { cardIndex: idx });
+    } else {
+        engine.descartarCarta(miSeat, idx);
+        playSound('card-discard');
+        if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+        renderJuego();
+        verificarTurnoBot();
+    }
 }
 document.getElementById('btn-descartar').addEventListener('click', ejecutarDescarteHumano);
 
 // Cortar Ronda
 document.getElementById('btn-cortar').addEventListener('click', () => {
-    if (engine.turnoSeat !== 0 || engine.fase !== 'descartar' || selectedCardIndex === null) return;
-    const ok = engine.cortar(0, selectedCardIndex);
-    if (ok) {
-        selectedCardIndex = null;
-        playSound('cut');
-        mostrarModalFinRonda();
+    if (engine.turnoSeat !== miSeat || engine.fase !== 'descartar' || selectedCardIndex === null) return;
+    const idx = selectedCardIndex;
+    selectedCardIndex = null;
+
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        window.FirebaseManager.enviarAccion('cortar', { cardIndex: idx });
+    } else {
+        const ok = engine.cortar(miSeat, idx);
+        if (ok) {
+            playSound('cut');
+            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+            mostrarModalFinRonda();
+        }
     }
 });
 
 // Auto-ordenar Mano
 document.getElementById('btn-auto-ordenar').addEventListener('click', () => {
-    if (!engine.players[0]) return;
-    engine.players[0].hand = engine.autoOrganizarMano(engine.players[0].hand);
+    if (!engine.players[miSeat]) return;
+    engine.players[miSeat].hand = engine.autoOrganizarMano(engine.players[miSeat].hand);
     selectedCardIndex = null;
     playSound('card-deal');
     renderJuego();
@@ -633,8 +699,13 @@ function iniciarConteoProximaMano() {
     const btn = document.getElementById('btn-siguiente-mano');
     if (!btn) return;
 
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        // En multijugador, el invitado espera al anfitrión
+        return;
+    }
+
     btn.style.display = 'block';
-    let count = 3;
+    let count = 4;
     btn.innerText = `🃏 Siguiente Mano (${count}s)`;
 
     autoAdvanceInterval = setInterval(() => {
@@ -663,8 +734,15 @@ function avanzarSiguienteMano() {
 
     if (engine.partidoFinalizado) return;
 
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        return; // Invitado espera actualización del anfitrión
+    }
+
     engine.iniciarRonda();
     playSound('shuffle');
+    if (modoJuego === 'multiplayer') {
+        window.FirebaseManager.sincronizarEstado(engine);
+    }
     renderJuego();
 
     verificarTurnoBot();
@@ -725,6 +803,104 @@ document.getElementById('btn-marcador').addEventListener('click', () => {
 document.getElementById('btn-start-1v1').addEventListener('click', () => window.iniciarSolo(2));
 document.getElementById('btn-start-4p').addEventListener('click', () => window.iniciarSolo(4));
 
+// -------------------------------------------------------------
+// MULTIJUGADOR ONLINE Y SINCRONIZACIÓN REMOTA
+// -------------------------------------------------------------
+let ultimaAccionProcesadaTs = 0;
+function procesarAccionRemota(accion) {
+    if (miRol !== 'creador' || !accion || !accion.tipo) return;
+    if (accion.seat === miSeat) return;
+    if (accion.ts && accion.ts <= ultimaAccionProcesadaTs) return;
+    ultimaAccionProcesadaTs = accion.ts || Date.now();
+
+    const seat = accion.seat;
+    if (seat !== engine.turnoSeat) return;
+
+    if (accion.tipo === 'robar_mazo') {
+        if (engine.fase === 'robar') {
+            engine.robarMazo(seat);
+            playSound('card-draw');
+            window.FirebaseManager.sincronizarEstado(engine);
+            renderJuego();
+        }
+    } else if (accion.tipo === 'robar_pozo') {
+        if (engine.fase === 'robar') {
+            engine.robarPozo(seat);
+            playSound('card-draw');
+            window.FirebaseManager.sincronizarEstado(engine);
+            renderJuego();
+        }
+    } else if (accion.tipo === 'descartar') {
+        if (engine.fase === 'descartar' && typeof accion.payload?.cardIndex === 'number') {
+            engine.descartarCarta(seat, accion.payload.cardIndex);
+            playSound('card-discard');
+            window.FirebaseManager.sincronizarEstado(engine);
+            renderJuego();
+            verificarTurnoBot();
+        }
+    } else if (accion.tipo === 'cortar') {
+        if (engine.fase === 'descartar' && typeof accion.payload?.cardIndex === 'number') {
+            const ok = engine.cortar(seat, accion.payload.cardIndex);
+            if (ok) {
+                playSound('cut');
+                window.FirebaseManager.sincronizarEstado(engine);
+                mostrarModalFinRonda();
+            }
+        }
+    }
+}
+
+function aplicarEstadoJuegoRemoto(estadoJuego) {
+    if (!estadoJuego) return;
+    if (!engine) engine = new CongaEngine();
+    engine.partidoIniciado = true;
+    engine.rondaActual = estadoJuego.rondaActual;
+    engine.turnoSeat = estadoJuego.turnoSeat;
+    engine.fase = estadoJuego.fase;
+    engine.ultimoCortador = estadoJuego.ultimoCortador;
+    engine.partidoFinalizado = !!estadoJuego.partidoFinalizado;
+    engine.ganadorPartido = estadoJuego.ganadorPartido;
+
+    // Pozo de descarte
+    if (Array.isArray(estadoJuego.discardPile)) {
+        engine.discardPile = estadoJuego.discardPile.map(c => new Carta(c.valor, c.palo, c.esComodin, c.id));
+    }
+
+    // Representación visual del mazo
+    if (typeof estadoJuego.deckCount === 'number') {
+        engine.deck = new Array(estadoJuego.deckCount).fill(null).map((_, i) => new Carta(1, 'Espada', false, `deck_${i}`));
+    }
+
+    // Jugadores
+    if (Array.isArray(estadoJuego.players)) {
+        engine.numPlayers = estadoJuego.players.length;
+        engine.players = estadoJuego.players.map(pData => {
+            const p = new Jugador(pData.seat, pData.name, pData.isBot);
+            p.puntosAcumulados = pData.puntosAcumulados || 0;
+            p.eliminado = !!pData.eliminado;
+            p.reenganches = pData.reenganches || 0;
+            p.puntosSueltos = pData.puntosSueltos || 0;
+            p.hand = (pData.hand || []).map(c => new Carta(c.valor, c.palo, c.esComodin, c.id));
+            p.melds = (pData.melds || []).map(m => m.map(c => new Carta(c.valor, c.palo, c.esComodin, c.id)));
+            p.unmelded = (pData.unmelded || []).map(c => new Carta(c.valor, c.palo, c.esComodin, c.id));
+            return p;
+        });
+    }
+
+    // Modal de fin de ronda
+    if (estadoJuego.resultadoRonda) {
+        engine.resultadoRonda = estadoJuego.resultadoRonda;
+        const modal = document.getElementById('modal-fin-ronda');
+        if (modal && modal.style.display !== 'flex') {
+            mostrarModalFinRonda();
+        }
+    } else {
+        cerrarModal('modal-fin-ronda');
+    }
+
+    renderJuego();
+}
+
 // Multijugador Online: Crear Sala
 document.getElementById('btn-crear-online').addEventListener('click', async () => {
     if (!window.FirebaseManager || !window.FirebaseManager.isAvailable()) {
@@ -734,6 +910,9 @@ document.getElementById('btn-crear-online').addEventListener('click', async () =
     try {
         const nombre = engine.config.nombreJugador || "Anfitrión";
         const res = await window.FirebaseManager.crearSala(nombre, 2, true, engine.config);
+        miSeat = 0;
+        miRol = 'creador';
+        modoJuego = 'multiplayer';
         
         document.getElementById('form-unirse-sala').style.display = 'none';
         document.getElementById('info-sala-espera').style.display = 'block';
@@ -750,6 +929,8 @@ document.getElementById('btn-crear-online').addEventListener('click', async () =
             if (lista && sala.jugadores) {
                 lista.innerHTML = sala.jugadores.map(j => `<div style="padding:6px; background:rgba(255,255,255,0.1); border-radius:6px;">👤 ${j.name} (Listo)</div>`).join('');
             }
+        }, (accion) => {
+            procesarAccionRemota(accion);
         });
     } catch(err) {
         alert("Error creando sala: " + err.message);
@@ -759,12 +940,15 @@ document.getElementById('btn-crear-online').addEventListener('click', async () =
 // Host hace click en Iniciar Partida
 document.getElementById('btn-host-iniciar').addEventListener('click', async () => {
     modoJuego = 'multiplayer';
+    miSeat = 0;
+    miRol = 'creador';
     cerrarModal('modal-sala');
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('btn-salir').style.display = 'block';
 
     await window.FirebaseManager.iniciarPartidaOnline(engine);
     renderJuego();
+    verificarTurnoBot();
 });
 
 // Unirse con Código
@@ -782,18 +966,30 @@ document.getElementById('btn-confirmar-unirse').addEventListener('click', async 
         const res = await window.FirebaseManager.unirseSala(code, nombre);
         
         modoJuego = 'multiplayer';
-        cerrarModal('modal-sala');
-        document.getElementById('start-screen').style.display = 'none';
-        document.getElementById('btn-salir').style.display = 'block';
+        miSeat = res.seat;
+        miRol = 'invitado';
+
+        document.getElementById('form-unirse-sala').style.display = 'none';
+        document.getElementById('info-sala-espera').style.display = 'block';
+        document.getElementById('sala-codigo-display').innerText = code;
+        document.getElementById('btn-host-iniciar').style.display = 'none';
         document.getElementById('room-code-tag').innerText = code;
         document.getElementById('room-code-tag').style.display = 'inline-block';
 
         window.FirebaseManager.escucharSala((sala) => {
+            const lista = document.getElementById('sala-lista-jugadores');
+            if (lista && sala.jugadores) {
+                lista.innerHTML = sala.jugadores.map(j => `<div style="padding:6px; background:rgba(255,255,255,0.1); border-radius:6px;">👤 ${j.name} (Listo)</div>`).join('');
+            }
+
             if (sala.estado === 'jugando' && sala.estadoJuego) {
-                // Sincronizar estado
-                engine.fase = sala.estadoJuego.fase;
-                engine.turnoSeat = sala.estadoJuego.turnoSeat;
-                renderJuego();
+                cerrarModal('modal-sala');
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('btn-salir').style.display = 'block';
+                aplicarEstadoJuegoRemoto(sala.estadoJuego);
+            } else if (sala.estado === 'finalizado') {
+                alert("La sala fue cerrada por el anfitrión.");
+                salirAlLobby();
             }
         });
     } catch(e) {
@@ -830,23 +1026,19 @@ window.addEventListener('keydown', (e) => {
         return;
     }
 
-    if (!engine || !engine.partidoIniciado || engine.turnoSeat !== 0) return;
+    if (!engine || !engine.partidoIniciado || engine.turnoSeat !== miSeat) return;
 
     if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
         // Espacio o R: Robar del mazo
         if (engine.fase === 'robar') {
             e.preventDefault();
-            engine.robarMazo(0);
-            playSound('card-draw');
-            renderJuego();
+            document.getElementById('btn-robar-mazo').click();
         }
     } else if (e.key === 'p' || e.key === 'P') {
         // P: Robar del pozo
         if (engine.fase === 'robar') {
             e.preventDefault();
-            engine.robarPozo(0);
-            playSound('card-draw');
-            renderJuego();
+            document.getElementById('btn-robar-pozo').click();
         }
     } else if (e.key === 'd' || e.key === 'D') {
         // D: Descartar
@@ -856,14 +1048,14 @@ window.addEventListener('keydown', (e) => {
         }
     } else if (e.key === 'c' || e.key === 'C') {
         // C: Cortar
-        if (engine.fase === 'descartar' && selectedCardIndex !== null && engine.puedeCortar(0, selectedCardIndex)) {
+        if (engine.fase === 'descartar' && selectedCardIndex !== null && engine.puedeCortar(miSeat, selectedCardIndex)) {
             e.preventDefault();
             document.getElementById('btn-cortar').click();
         }
     } else if (e.key >= '1' && e.key <= '8') {
         // Teclas 1 a 8 para seleccionar carta
         const idx = parseInt(e.key) - 1;
-        if (engine.players[0] && idx < engine.players[0].hand.length) {
+        if (engine.players[miSeat] && idx < engine.players[miSeat].hand.length) {
             e.preventDefault();
             seleccionarCarta(idx);
         }

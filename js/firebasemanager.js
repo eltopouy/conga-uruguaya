@@ -1,6 +1,7 @@
 // js/firebasemanager.js
 // Gestor de Multijugador en Tiempo Real para Conga Uruguaya usando Firebase Realtime Database
 
+(function () {
 const firebaseConfig = {
     apiKey: "AIzaSyDm0Je0uB5ejXh5e9ZCApWQBBQgbVyPigI",
     authDomain: "truco-25629.firebaseapp.com",
@@ -139,7 +140,17 @@ const FirebaseManager = {
     iniciarPartidaOnline: async (engine) => {
         if (miRol !== 'creador' || !roomRef) return;
 
-        engine.configurarPartida(engine.numJugadores);
+        const snap = await roomRef.once('value');
+        const sala = snap.val();
+        const jugadores = (sala && sala.jugadores) ? sala.jugadores : [{ seat: 0, name: engine.config.nombreJugador || "TÚ" }];
+
+        engine.configurarPartida(jugadores.length);
+        jugadores.forEach((j, idx) => {
+            if (engine.players[idx]) {
+                engine.players[idx].name = j.name;
+                engine.players[idx].isBot = false;
+            }
+        });
 
         await roomRef.update({
             estado: 'jugando',
@@ -149,7 +160,7 @@ const FirebaseManager = {
         window.FirebaseManager.sincronizarEstado(engine);
     },
 
-    // Sincronizar Estado del Motor a Firebase con Anti-Cheat
+    // Sincronizar Estado del Motor a Firebase
     sincronizarEstado: async (engine) => {
         if (miRol !== 'creador' || !roomRef) return;
 
@@ -158,28 +169,50 @@ const FirebaseManager = {
             turnoSeat: engine.turnoSeat,
             fase: engine.fase,
             deckCount: engine.deck.length,
-            topDiscard: engine.discardPile.length > 0 ? engine.discardPile[engine.discardPile.length - 1] : null,
-            discardPile: engine.discardPile,
+            topDiscard: engine.discardPile.length > 0 ? {
+                valor: engine.discardPile[engine.discardPile.length - 1].valor,
+                palo: engine.discardPile[engine.discardPile.length - 1].palo,
+                esComodin: engine.discardPile[engine.discardPile.length - 1].esComodin,
+                id: engine.discardPile[engine.discardPile.length - 1].id
+            } : null,
+            discardPile: engine.discardPile.map(c => ({
+                valor: c.valor,
+                palo: c.palo,
+                esComodin: c.esComodin,
+                id: c.id
+            })),
             ultimoCortador: engine.ultimoCortador,
             resultadoRonda: engine.resultadoRonda,
             partidoFinalizado: engine.partidoFinalizado,
             ganadorPartido: engine.ganadorPartido,
             ts: Date.now(),
-            // Manos de los jugadores:
-            // Si la ronda está activa, los invitados reciben solo el número de cartas y sus cartas reales se transmiten
-            // sólo a su asiento correspondiente
             players: engine.players.map(p => ({
                 seat: p.seat,
                 name: p.name,
+                isBot: p.isBot,
                 puntosAcumulados: p.puntosAcumulados,
                 eliminado: p.eliminado,
                 reenganches: p.reenganches,
                 cardCount: p.hand.length,
                 puntosSueltos: p.puntosSueltos,
-                // Al terminar la ronda se revelan las cartas de todos; mientras tanto, se guardan en el servidor
-                hand: (engine.fase === 'fin_ronda' || engine.partidoFinalizado) ? p.hand : p.hand,
-                melds: (engine.fase === 'fin_ronda') ? p.melds : [],
-                unmelded: (engine.fase === 'fin_ronda') ? p.unmelded : []
+                hand: p.hand.map(c => ({
+                    valor: c.valor,
+                    palo: c.palo,
+                    esComodin: c.esComodin,
+                    id: c.id
+                })),
+                melds: (p.melds || []).map(m => m.map(c => ({
+                    valor: c.valor,
+                    palo: c.palo,
+                    esComodin: c.esComodin,
+                    id: c.id
+                }))),
+                unmelded: (p.unmelded || []).map(c => ({
+                    valor: c.valor,
+                    palo: c.palo,
+                    esComodin: c.esComodin,
+                    id: c.id
+                }))
             }))
         };
 
@@ -246,3 +279,4 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { FirebaseManager };
 }
+})();

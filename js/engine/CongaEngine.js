@@ -204,7 +204,10 @@ class CongaEngine {
     robarMazo(seat) {
         if (this.fase !== 'robar' || this.turnoSeat !== seat) return null;
         this.reciclarMazoSiEsNecesario();
-        if (this.deck.length === 0) return null;
+        if (this.deck.length === 0) {
+            this.terminarRondaPorMazoAgotado();
+            return null;
+        }
 
         const carta = this.deck.pop();
         this.players[seat].hand.push(carta);
@@ -232,6 +235,11 @@ class CongaEngine {
         if (this.fase !== 'descartar' || this.turnoSeat !== seat) return null;
         const player = this.players[seat];
         if (cardIndex < 0 || cardIndex >= player.hand.length) return null;
+
+        // Regla: no se puede tirar la misma carta que se acaba de levantar del pozo
+        if (this.origenRobo === 'pozo' && this.cartaRobada && player.hand[cardIndex].id === this.cartaRobada.id) {
+            return null;
+        }
 
         const [carta] = player.hand.splice(cardIndex, 1);
         this.discardPile.push(carta);
@@ -620,6 +628,48 @@ class CongaEngine {
         this.historialRondas.push(this.resultadoRonda);
 
         // Si el partido no terminó, rotar el mano para la siguiente ronda
+        if (!this.partidoFinalizado) {
+            this.manoSeat = (this.manoSeat + 1) % this.numJugadores;
+            while (this.players[this.manoSeat].eliminado) {
+                this.manoSeat = (this.manoSeat + 1) % this.numJugadores;
+            }
+        }
+    }
+
+    // Cierre forzoso de ronda en caso de agotar todas las cartas del mazo y pozo
+    terminarRondaPorMazoAgotado() {
+        this.fase = 'fin_ronda';
+        this.actualizarMeldsTodos();
+
+        const detalles = [];
+        this.players.forEach(p => {
+            if (!p.eliminado) {
+                p.puntosAcumulados += p.puntosSueltos;
+                detalles.push({
+                    seat: p.seat,
+                    name: p.name,
+                    puntosRonda: p.puntosSueltos,
+                    motivo: `Mazo agotado (+${p.puntosSueltos} Pts sueltos)`
+                });
+            }
+        });
+
+        this.verificarEliminaciones();
+
+        this.resultadoRonda = {
+            ronda: this.rondaActual,
+            cortadorSeat: null,
+            esCongaLimpia: false,
+            esCongaConComodin: false,
+            esCorteCero: false,
+            pasaronAlCortador: false,
+            detalles,
+            victoriaDirecta: false,
+            mazoAgotado: true
+        };
+
+        this.historialRondas.push(this.resultadoRonda);
+
         if (!this.partidoFinalizado) {
             this.manoSeat = (this.manoSeat + 1) % this.numJugadores;
             while (this.players[this.manoSeat].eliminado) {

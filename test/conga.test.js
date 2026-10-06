@@ -381,6 +381,47 @@ test('CongaBot decide descartar la carta que deja menor deadwood y corta si es <
     assert.strictEqual(jugada.cortar, true, 'El bot debe decidir cortar con 2 puntos');
 });
 
+// 8. Resiliencia de Motor y Reglas Avanzadas
+console.log('\n🛡️ 8. Resiliencia de Motor y Reglas Avanzadas:');
+
+test('No se permite descartar la misma carta que se acaba de robar del pozo', () => {
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+
+    const cartaPozo = new Carta(7, 'Oro');
+    engine.discardPile = [cartaPozo];
+    engine.fase = 'robar';
+    engine.turnoSeat = 0;
+
+    engine.robarPozo(0);
+    assert.strictEqual(engine.fase, 'descartar');
+    assert.strictEqual(engine.origenRobo, 'pozo');
+
+    // Intentar tirar la misma carta recién robada (la última de la mano)
+    const cardIndexRobada = engine.players[0].hand.length - 1;
+    const ok = engine.descartarCarta(0, cardIndexRobada);
+    assert.strictEqual(ok, null, 'No debe permitir descartar la carta recién alzada del pozo');
+    assert.strictEqual(engine.fase, 'descartar', 'La fase debe permanecer en descartar');
+});
+
+test('Agotamiento total de mazo y pozo finaliza la ronda sin bloqueo infinito', () => {
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+
+    // Vaciar mazo y dejar pozo en 1 carta
+    engine.deck = [];
+    engine.discardPile = [new Carta(4, 'Copas')];
+    engine.fase = 'robar';
+    engine.turnoSeat = 0;
+
+    // Robar del mazo cuando no hay cartas en mazo ni para reciclar en pozo
+    const carta = engine.robarMazo(0);
+    assert.strictEqual(carta, null, 'No debe robar carta');
+    assert.strictEqual(engine.fase, 'fin_ronda', 'La ronda debe terminar por mazo agotado');
+    assert(engine.resultadoRonda !== null, 'Debe generarse un resultado de ronda');
+    assert.strictEqual(engine.resultadoRonda.mazoAgotado, true);
+});
+
 console.log('\n========================================');
 console.log(`🏁 RESULTADO: ${passedTests}/${totalTests} tests pasados.`);
 console.log('========================================\n');
