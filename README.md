@@ -36,12 +36,19 @@ Simulador profesional del juego tradicional de naipes **Conga Uruguaya**, desarr
 
 ---
 
+## 🌐 Jugar Online
+
+Puedes jugar directamente desde el navegador en GitHub Pages:
+👉 **[https://eltopouy.github.io/conga-uruguaya/](https://eltopouy.github.io/conga-uruguaya/)**
+
+---
+
 ## 🧪 Pruebas Automatizadas
 
-El proyecto cuenta con 39 pruebas automatizadas:
+El proyecto cuenta con 41 pruebas automatizadas:
 * **24 Tests Unitarios:** Validación de mazo, combinaciones, algoritmo de melds, corte, acomodo, puntuaciones y bot.
-* **8 Tests de Simulación E2E:** Flujo completo 1v1 y 4P, rotación de mano, audio, manifiesto y service worker.
-* **7 Tests en Navegador Real (Playwright):** Renderizado, interfaz gráfica, modales, arrastre y responsividad mobile.
+* **9 Tests de Simulación E2E:** Flujo completo 1v1 y 4P, reordenamiento manual de mano, audio, manifiesto y service worker.
+* **8 Tests en Navegador Real (Playwright):** Renderizado, interfaz gráfica, modales, arrastre interactivo con mouse/touch y responsividad mobile.
 
 Ejecutar pruebas:
 ```bash
