@@ -1,4 +1,4 @@
-/* css/style.css - Conga Uruguaya / Chinchón */
+/* css/style.css - Conga Uruguaya */
 
 :root {
     --felt-color: #0d3b1e;
@@ -290,24 +290,35 @@ body {
     background-repeat: no-repeat;
     border-radius: 8px;
     margin: 0 -14px;
-    cursor: pointer;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
     box-shadow: var(--card-shadow);
     transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.2s ease;
     position: relative;
     transform-origin: bottom center;
 }
 
-.hand-card:hover {
+.hand-card:not(.is-dragging):hover {
     transform: translateY(-24px) scale(1.08) !important;
     z-index: 50 !important;
     box-shadow: var(--card-hover-shadow);
 }
 
-.hand-card.selected-card {
+.hand-card.selected-card:not(.is-dragging) {
     transform: translateY(-30px) scale(1.1) !important;
     box-shadow: 0 0 20px rgba(241, 196, 15, 0.9), var(--card-hover-shadow);
     z-index: 60 !important;
     border: 2px solid var(--gold);
+}
+
+.hand-card.is-dragging {
+    z-index: 100 !important;
+    cursor: grabbing !important;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8), 0 0 25px rgba(241, 196, 15, 0.7) !important;
+    transition: none !important;
+    filter: brightness(1.08);
 }
 
 /* Etiquetas de combinación (LIGADA / SUELTA) */

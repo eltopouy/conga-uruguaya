@@ -1,7 +1,7 @@
 {
   "name": "Conga Uruguaya Premium",
   "short_name": "Conga",
-  "description": "El auténtico juego de cartas Conga (Chinchón) con baraja española, Inteligencia Artificial y Multijugador",
+  "description": "El auténtico juego de cartas Conga con cartas españolas, Inteligencia Artificial y Multijugador",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#05140b",

@@ -186,6 +186,45 @@ const assert = require('assert');
             await page.close();
         });
 
+        // TEST 8: Reordenamiento manual de cartas por arrastre (drag-and-drop con pointer/mouse)
+        await runTest('Arrastre manual de carta con mouse/touch reordena las cartas en la mano', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath);
+
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(600);
+
+            // Obtener el ID inicial de las cartas
+            const initialOrder = await page.evaluate(() => {
+                return window.engine.players[0].hand.map(c => c.id);
+            });
+
+            const cards = await page.$$('#player-hand-fan .hand-card');
+            const box0 = await cards[0].boundingBox();
+            const box2 = await cards[2].boundingBox();
+
+            assert(box0 && box2, 'Las cartas deben tener dimensiones válidas');
+
+            // Arrastrar con mouse de la posición de la carta 0 a la posición de la carta 2
+            await page.mouse.move(box0.x + box0.width / 2, box0.y + box0.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 12 });
+            await page.waitForTimeout(100);
+            await page.mouse.up();
+            await page.waitForTimeout(300);
+
+            const newOrder = await page.evaluate(() => {
+                return window.engine.players[0].hand.map(c => c.id);
+            });
+
+            // La carta que estaba en índice 0 ahora debe haberse movido de la primera posición
+            assert.notStrictEqual(newOrder[0], initialOrder[0], 'La carta 0 original debe haberse desplazado');
+            assert.strictEqual(newOrder.length, 7, 'La cantidad de cartas debe seguir siendo 7');
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }

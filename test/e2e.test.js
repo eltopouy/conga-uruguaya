@@ -151,6 +151,28 @@ testE2E('autoOrganizarMano agrupa melds primero y cartas sueltas ordenadas al fi
     assert.strictEqual(organizada[6].getPuntosSueltos(), 10);
 });
 
+testE2E('Reordenamiento manual de cartas en mano permuta correctamente la posición de las cartas', () => {
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+    const hand = engine.players[0].hand;
+    const card0 = hand[0];
+    const card3 = hand[3];
+
+    // Simular el movimiento de la carta en índice 3 hacia la posición 0
+    const [movedCard] = hand.splice(3, 1);
+    hand.splice(0, 0, movedCard);
+
+    assert.strictEqual(hand[0].id, card3.id);
+    assert.strictEqual(hand[1].id, card0.id);
+    assert.strictEqual(hand.length, 7);
+
+    // Mover la carta de posición 0 al final (índice 6)
+    const [movedCard2] = hand.splice(0, 1);
+    hand.splice(6, 0, movedCard2);
+    assert.strictEqual(hand[6].id, card3.id);
+    assert.strictEqual(hand[0].id, card0.id);
+});
+
 // 4. SoundManager y Web Audio
 console.log('\n🔊 4. SoundManager y Web Audio:');
 

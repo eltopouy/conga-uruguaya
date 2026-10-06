@@ -1,5 +1,5 @@
 // js/engine/CongaBot.js
-// Inteligencia Artificial táctica para la Conga Uruguaya / Chinchón
+// Inteligencia Artificial táctica para la Conga Uruguaya
 
 class CongaBot {
     constructor(difficulty = 'normal') {

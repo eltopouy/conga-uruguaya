@@ -1,5 +1,5 @@
 // js/engine/CongaEngine.js
-// Motor central de reglas de Conga Uruguaya / Chinchón
+// Motor central de reglas de Conga Uruguaya
 
 class Carta {
     constructor(valor, palo, esComodin = false, id = null) {
@@ -273,8 +273,8 @@ class CongaEngine {
         // Ordenar cartas naturales por valor ascendente
         const vals = naturales.map(c => c.valor).sort((a, b) => a - b);
 
-        // En la baraja española de 40 cartas: [1,2,3,4,5,6,7, 10,11,12]
-        // Si hay salto de 7 a 10 en baraja de 40 cartas, son consecutivas.
+        // En las cartas españolas de 40 cartas: [1,2,3,4,5,6,7, 10,11,12]
+        // Si hay salto de 7 a 10 en mazo de 40 cartas, son consecutivas.
         const es40 = (this.config.deckSize === 40);
 
         const getConsecutivoDist = (v1, v2) => {
@@ -323,7 +323,7 @@ class CongaEngine {
             return { melds: [], unmelded: [], puntosSueltos: 0, esConga: false, esCongaLimpia: false, esCorteCero: false };
         }
 
-        // Caso especial: ¡CONGA / CHINCHÓN! (7 cartas consecutivas del mismo palo)
+        // Caso especial: ¡CONGA LIMPIA! (7 cartas consecutivas del mismo palo)
         if (cards.length === 7 && this.esEscaleraValida(cards)) {
             const tieneComodin = cards.some(c => c.esComodin);
             return {
@@ -516,7 +516,7 @@ class CongaEngine {
         let pasaronAlCortador = false;
         let quienPasoAlCortador = null;
 
-        // Caso 1: ¡CONGA LIMPIA (CHINCHÓN)! -> Gana la partida inmediatamente
+        // Caso 1: ¡CONGA LIMPIA! -> Gana la partida inmediatamente
         if (cortadorAnalysis.esCongaLimpia) {
             victoriaDirecta = true;
             this.partidoFinalizado = true;

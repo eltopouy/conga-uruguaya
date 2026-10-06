@@ -142,7 +142,7 @@ class SoundManager {
             osc.stop(t + 0.35);
         }
         else if (type === 'shuffle') {
-            // Efecto de barajar
+            // Efecto de mezclar cartas
             for (let i = 0; i < 4; i++) {
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();

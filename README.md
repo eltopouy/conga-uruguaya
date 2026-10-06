@@ -1,16 +1,16 @@
-# 🎴 Conga Uruguaya Premium (Chinchón)
+# 🎴 Conga Uruguaya Premium
 
-Simulador profesional del juego tradicional de naipes **Conga Uruguaya** (también conocido en el Río de la Plata y España como **Chinchón**), desarrollado con baraja española tradicional, Inteligencia Artificial táctica y Multijugador en tiempo real con Firebase.
+Simulador profesional del juego tradicional de naipes **Conga Uruguaya**, desarrollado con cartas españolas tradicionales, Inteligencia Artificial táctica y Multijugador en tiempo real con Firebase.
 
 ---
 
 ## 🧉 Características Principales
 
-* **Baraja Española Completa:** 40 o 48 cartas con ilustraciones criollas clásicas más 2 comodines opcionales.
+* **Mazo de Cartas Españolas Completo:** 40 o 48 cartas con ilustraciones criollas clásicas más 2 comodines opcionales.
 * **Motor de Reglas y Combinaciones:**
   * Detección automática óptima de **Escaleras (Runs)** y **Piernas / Tríos / Cuartetos (Sets)**.
   * Soporte para sustitución de **Comodines**.
-  * **¡CONGA LIMPIA! (Chinchón directo):** 7 cartas consecutivas del mismo palo sin comodín (victoria inmediata).
+  * **¡CONGA LIMPIA! (7 Cartas seguidas):** 7 cartas consecutivas del mismo palo sin comodín (victoria inmediata).
   * **Conga con Comodín:** -25 puntos de premio.
   * **Corte en 0 (Limpio):** -10 puntos de premio.
   * **Corte con cartas sueltas:** corte con 5 puntos o menos.

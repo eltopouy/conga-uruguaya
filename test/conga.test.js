@@ -1,5 +1,5 @@
 // test/conga.test.js
-// Suite de Tests Unitarios para el Motor de Conga Uruguaya (Chinchón)
+// Suite de Tests Unitarios para el Motor de Conga Uruguaya
 
 const assert = require('assert');
 const { Carta, Jugador, CongaEngine } = require('../js/engine/CongaEngine');

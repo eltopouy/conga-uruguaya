@@ -4,6 +4,8 @@
 let engine = new CongaEngine();
 let bot = new CongaBot('normal');
 let sound = new SoundManager();
+window.engine = engine;
+window.sound = sound;
 
 let modoJuego = 'singleplayer'; // 'singleplayer' | 'multiplayer'
 let selectedCardIndex = null;
@@ -275,11 +277,8 @@ function renderJuego() {
             badge.innerText = meldedSet.has(carta.id) ? "LIGADA" : `${carta.getPuntosSueltos()}p`;
             cardEl.appendChild(badge);
 
-            // Click para seleccionar
-            cardEl.addEventListener('click', (e) => {
-                e.stopPropagation();
-                seleccionarCarta(idx);
-            });
+            // Permitir arrastre y reordenamiento manual de la carta con mouse o touch
+            habilitarArrastreReorden(cardEl, idx, myPlayer.hand, plyHandFan);
 
             plyHandFan.appendChild(cardEl);
         });
@@ -335,6 +334,171 @@ function seleccionarCarta(idx) {
     }
     renderJuego();
 }
+
+/**
+ * Habilita el reordenamiento manual de cartas en mano por arrastre (drag-and-drop)
+ * con botón izquierdo del mouse o pantalla táctil, además de permitir descarte rápido.
+ */
+function habilitarArrastreReorden(cardDOM, index, hand, container) {
+    let startX = 0;
+    let startY = 0;
+    let isDragging = false;
+    let wasDragged = false;
+    let currentSlotIndex = index;
+    let activePointerId = null;
+    let siblingCards = [];
+    let slotCenters = [];
+    let shiftAmount = 60;
+    const totalCards = hand.length;
+
+    cardDOM.addEventListener('pointerdown', (e) => {
+        // Responder únicamente a botón principal (0) en mouse o puntero táctil
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+        startX = e.clientX;
+        startY = e.clientY;
+        isDragging = false;
+        wasDragged = false;
+        currentSlotIndex = index;
+        activePointerId = e.pointerId;
+
+        siblingCards = Array.from(container.children).filter(el => el.classList.contains('hand-card'));
+        const cardRects = siblingCards.map(el => el.getBoundingClientRect());
+        slotCenters = cardRects.map(r => r.left + r.width / 2);
+        if (slotCenters.length > 1) {
+            shiftAmount = Math.abs(slotCenters[1] - slotCenters[0]) || 60;
+        }
+
+        try {
+            cardDOM.setPointerCapture(e.pointerId);
+        } catch (_) {}
+    });
+
+    cardDOM.addEventListener('pointermove', (e) => {
+        if (activePointerId === null || e.pointerId !== activePointerId) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (!isDragging) {
+            // Umbral de 7 píxeles para distinguir click de arrastre intencional
+            if (Math.hypot(dx, dy) >= 7) {
+                isDragging = true;
+                wasDragged = true;
+                cardDOM.classList.add('is-dragging');
+                if (navigator.vibrate) navigator.vibrate(10);
+            }
+        }
+
+        if (isDragging) {
+            cardDOM.style.transform = `translate3d(${dx}px, ${dy - 14}px, 0) scale(1.12) rotate(${dx * 0.04}deg)`;
+
+            const currentCenterX = (slotCenters[index] || 0) + dx;
+            let nearestSlot = index;
+            let minDiff = Infinity;
+            slotCenters.forEach((centerX, sIdx) => {
+                const diff = Math.abs(currentCenterX - centerX);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    nearestSlot = sIdx;
+                }
+            });
+
+            if (nearestSlot !== currentSlotIndex) {
+                currentSlotIndex = nearestSlot;
+
+                siblingCards.forEach((sibling, sIdx) => {
+                    if (sIdx === index) return;
+
+                    const baseAngle = (sIdx - (totalCards - 1) / 2) * 4;
+                    const baseYOffset = Math.abs(sIdx - (totalCards - 1) / 2) * 3;
+                    sibling.style.transition = 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1)';
+
+                    if (index < currentSlotIndex) {
+                        if (sIdx > index && sIdx <= currentSlotIndex) {
+                            sibling.style.transform = `translateX(-${shiftAmount}px) rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                        } else {
+                            sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                        }
+                    } else if (index > currentSlotIndex) {
+                        if (sIdx >= currentSlotIndex && sIdx < index) {
+                            sibling.style.transform = `translateX(${shiftAmount}px) rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                        } else {
+                            sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                        }
+                    } else {
+                        sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                    }
+                });
+            }
+        }
+    });
+
+    const finalizarArrastre = (e) => {
+        if (activePointerId === null || e.pointerId !== activePointerId) return;
+
+        try {
+            cardDOM.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+        activePointerId = null;
+
+        if (isDragging) {
+            const dy = e.clientY - startY;
+            cardDOM.classList.remove('is-dragging');
+            cardDOM.style.transform = '';
+
+            siblingCards.forEach(s => {
+                s.style.transform = '';
+                s.style.transition = '';
+            });
+
+            if (currentSlotIndex !== index && currentSlotIndex >= 0 && currentSlotIndex < hand.length) {
+                // Reordenar las cartas en la mano del jugador
+                const [movedCard] = hand.splice(index, 1);
+                hand.splice(currentSlotIndex, 0, movedCard);
+
+                // Ajustar índice de la carta seleccionada si existía
+                if (selectedCardIndex === index) {
+                    selectedCardIndex = currentSlotIndex;
+                } else if (selectedCardIndex !== null) {
+                    if (index < selectedCardIndex && currentSlotIndex >= selectedCardIndex) {
+                        selectedCardIndex--;
+                    } else if (index > selectedCardIndex && currentSlotIndex <= selectedCardIndex) {
+                        selectedCardIndex++;
+                    }
+                }
+
+                playSound('card-deal');
+                renderJuego();
+            } else if (dy < -80 && engine.turnoSeat === 0 && engine.fase === 'descartar') {
+                // Descarte rápido por arrastre vertical hacia arriba a la mesa
+                selectedCardIndex = index;
+                ejecutarDescarteHumano();
+            } else {
+                renderJuego();
+            }
+
+            wasDragged = true;
+            isDragging = false;
+            setTimeout(() => { wasDragged = false; }, 300);
+        }
+    };
+
+    cardDOM.addEventListener('pointerup', finalizarArrastre);
+    cardDOM.addEventListener('pointercancel', finalizarArrastre);
+
+    cardDOM.addEventListener('click', (e) => {
+        if (wasDragged) {
+            wasDragged = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        e.stopPropagation();
+        seleccionarCarta(index);
+    });
+}
+window.habilitarArrastreReorden = habilitarArrastreReorden;
 
 // Robar Mazo
 document.getElementById('btn-robar-mazo').addEventListener('click', () => {
