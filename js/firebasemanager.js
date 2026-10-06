@@ -43,12 +43,12 @@ const FirebaseManager = {
     // Escuchar salas públicas en el lobby
     escucharSalasPublicas: (callback) => {
         if (!db) return;
-        db.ref('conga_salas').orderByChild('estado').equalTo('esperando').on('value', (snap) => {
+        db.ref('salas').orderByChild('estado').equalTo('esperando').on('value', (snap) => {
             const salas = [];
             if (snap.exists()) {
                 snap.forEach(child => {
                     const data = child.val();
-                    if (data && data.publica) {
+                    if (data && data.publica && data.juego === 'conga') {
                         salas.push({ id: child.key, ...data });
                     }
                 });
@@ -65,9 +65,10 @@ const FirebaseManager = {
         miRol = 'creador';
         miSeat = 0;
 
-        roomRef = db.ref(`conga_salas/${codigo}`);
+        roomRef = db.ref(`salas/${codigo}`);
 
         const salaData = {
+            juego: 'conga',
             codigo,
             creador: nombreHost,
             maxJugadores,
@@ -87,6 +88,9 @@ const FirebaseManager = {
         };
 
         await roomRef.set(salaData);
+        try {
+            roomRef.onDisconnect().update({ estado: 'finalizado' });
+        } catch (_) {}
         window.FirebaseManager._iniciarHeartbeat(codigo);
         return { codigo, seat: 0 };
     },
@@ -95,7 +99,7 @@ const FirebaseManager = {
     unirseSala: async (codigo, nombreJugador) => {
         if (!db) throw new Error("Firebase no disponible");
         codigo = (codigo || '').trim().toUpperCase();
-        const ref = db.ref(`conga_salas/${codigo}`);
+        const ref = db.ref(`salas/${codigo}`);
         const snap = await ref.once('value');
 
         if (!snap.exists()) {
