@@ -34,7 +34,7 @@ const assert = require('assert');
         await runTest('Pantalla de inicio carga correctamente con opciones de juego', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             const startScreenVisible = await page.isVisible('#start-screen');
             assert.strictEqual(startScreenVisible, true);
@@ -50,7 +50,7 @@ const assert = require('assert');
         await runTest('Clic en "1 vs 1" inicia la partida, reparte 7 cartas y muestra el pozo', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(600);
@@ -75,7 +75,7 @@ const assert = require('assert');
         await runTest('Clic en "4 Jugadores" muestra los 3 rivales en el área superior', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-4p');
             await page.waitForTimeout(600);
@@ -90,7 +90,7 @@ const assert = require('assert');
         await runTest('Apertura y navegación de modales de Reglamento, Guía y Configuración', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(500);
@@ -124,7 +124,7 @@ const assert = require('assert');
         await runTest('Robar del mazo pasa la mano a 8 cartas y habilita botón descartar al seleccionar', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(600);
@@ -152,7 +152,7 @@ const assert = require('assert');
         await runTest('Botón Auto-ordenar funciona limpiamente', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(600);
@@ -174,7 +174,7 @@ const assert = require('assert');
                 hasTouch: true
             });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(600);
@@ -190,7 +190,7 @@ const assert = require('assert');
         await runTest('Arrastre manual de carta con mouse/touch reordena las cartas en la mano', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(600);
@@ -229,7 +229,7 @@ const assert = require('assert');
         await runTest('Puntos en la esquina de cada carta quedan ocultos por defecto y son configurables', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(600);
@@ -270,7 +270,7 @@ const assert = require('assert');
         await runTest('Al cortar, se muestran las cartas del cortador en la mesa y se habilita la colocación de cartas', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
-            await page.goto(filePath);
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
 
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(500);
@@ -334,6 +334,61 @@ const assert = require('assert');
 
             const modalFinRondaVisible = await page.isVisible('#modal-fin-ronda');
             assert.strictEqual(modalFinRondaVisible, true, 'El modal de fin de ronda debe mostrarse');
+
+            await page.close();
+        });
+
+        // TEST 11: Volumen físico del mazo y eliminación del número de cartas
+        await runTest('El mazo no muestra número de cartas y su volumen/bordes reflejan la cantidad a simple vista', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
+
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(500);
+
+            // 1. Verificar que el número de cartas del mazo no existe en el DOM
+            const deckCounterEl = await page.$('#deck-counter');
+            assert.strictEqual(deckCounterEl, null, 'El elemento #deck-counter no debe existir en el mazo');
+
+            // 2. Verificar que con mazo completo (p. ej. 35 cartas) tiene un volumen amplio de sombras
+            const shadowFull = await page.evaluate(() => {
+                window.actualizarVolumenMazo(35, false);
+                return document.getElementById('deck-pile-element').style.boxShadow;
+            });
+            const parseShadowLayers = (str) => str ? str.split(/,(?![^(]*\))/).map(s => s.trim()) : [];
+
+            assert(shadowFull.includes('px'), 'Debe tener sombras escalonadas');
+            assert(parseShadowLayers(shadowFull).length > 10, 'Un mazo con 35 cartas debe tener múltiples capas de volumen (>10 capas)');
+
+            // 3. Verificar que con 4 cartas se ven exactamente los bordes de esas cartas (3 capas debajo de la superior)
+            const shadow4 = await page.evaluate(() => {
+                window.actualizarVolumenMazo(4, false);
+                return document.getElementById('deck-pile-element').style.boxShadow;
+            });
+            // Cada capa debajo aporta 2 entradas de box-shadow (borde claro + línea oscura) + 1 sombra difusa final
+            // 3 capas * 2 + 1 = 7 entradas
+            assert.strictEqual(parseShadowLayers(shadow4).length, 7, 'Con 4 cartas deben apreciarse exactamente 3 bordes de cartas debajo');
+
+            // 4. Con 1 carta única: plana en la mesa, solo 1 sombra difusa base (sin bordes debajo)
+            const shadow1 = await page.evaluate(() => {
+                window.actualizarVolumenMazo(1, false);
+                return document.getElementById('deck-pile-element').style.boxShadow;
+            });
+            assert.strictEqual(parseShadowLayers(shadow1).length, 1, 'Con 1 carta solo debe proyectar sombra base sin bordes debajo');
+
+            // 5. Con 0 cartas: mazo vacío (opaco, sin sombra, borde punteado)
+            const emptyStyle = await page.evaluate(() => {
+                window.actualizarVolumenMazo(0, false);
+                const el = document.getElementById('deck-pile-element');
+                return {
+                    boxShadow: el.style.boxShadow,
+                    border: el.style.border,
+                    opacity: el.style.opacity
+                };
+            });
+            assert.strictEqual(emptyStyle.boxShadow, 'none', 'Mazo vacío no proyecta volumen');
+            assert(emptyStyle.border.includes('dashed'), 'Mazo vacío se muestra como ranura punteada');
 
             await page.close();
         });

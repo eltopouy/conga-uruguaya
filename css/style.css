@@ -182,7 +182,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     cursor: pointer;
     position: relative;
     transition: transform 0.2s ease;
@@ -215,12 +215,11 @@ body {
 .deck-pile {
     background: url('../assets/cards_tatu/carta_reverso.png') no-repeat center/cover;
     border: 2px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 2px 2px 0 #1b120c, 4px 4px 0 #120b07, 6px 6px 12px rgba(0, 0, 0, 0.6);
+    transition: box-shadow 0.25s ease, transform 0.2s ease, opacity 0.3s ease, border-color 0.2s ease;
 }
 
 .deck-pile.highlight-draw {
     border-color: var(--gold);
-    box-shadow: 0 0 20px rgba(241, 196, 15, 0.8), 2px 2px 0 #1b120c;
     animation: pulseGlow 1.2s infinite alternate;
 }
 
@@ -236,19 +235,6 @@ body {
     border-color: var(--gold);
     box-shadow: 0 0 20px rgba(241, 196, 15, 0.8);
     animation: pulseGlow 1.2s infinite alternate;
-}
-
-.deck-counter-badge {
-    position: absolute;
-    bottom: -8px;
-    right: -8px;
-    background: var(--gold);
-    color: #000;
-    font-weight: bold;
-    font-size: 0.75rem;
-    padding: 2px 6px;
-    border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
 @keyframes pulseGlow {

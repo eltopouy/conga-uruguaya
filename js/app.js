@@ -247,13 +247,13 @@ function renderJuego() {
     }
 
     // 2. Centro de la mesa: Mazo de Robo y Pozo
-    const deckCountEl = document.getElementById('deck-counter');
-    if (deckCountEl) deckCountEl.innerText = engine.deck ? engine.deck.length : 0;
-
     const deckEl = document.getElementById('deck-pile-element');
+    const deckCount = engine.deck ? engine.deck.length : 0;
     const isMyTurnToDraw = (engine.turnoSeat === miSeat && engine.fase === 'robar');
+    actualizarVolumenMazo(deckCount, isMyTurnToDraw);
+
     if (deckEl) {
-        if (isMyTurnToDraw) deckEl.classList.add('highlight-draw');
+        if (isMyTurnToDraw && deckCount > 0) deckEl.classList.add('highlight-draw');
         else deckEl.classList.remove('highlight-draw');
     }
 
@@ -605,6 +605,74 @@ function renderJuego() {
         if (btnConfirmarCorte) btnConfirmarCorte.style.display = 'none';
     }
 }
+
+/**
+ * Actualiza el volumen tridimensional y los bordes visibles del mazo de robo.
+ * Sin mostrar un número artificial, los jugadores pueden ver a simple vista cuántas cartas
+ * quedan según el grosor del mazo (para pocas cartas se aprecian exactamente los bordes de cada carta).
+ */
+function actualizarVolumenMazo(count, isHighlight = false) {
+    const deckEl = document.getElementById('deck-pile-element');
+    if (!deckEl) return;
+
+    if (count <= 0) {
+        // Mazo totalmente agotado
+        deckEl.style.opacity = '0.22';
+        deckEl.style.backgroundImage = 'none';
+        deckEl.style.border = '2px dashed rgba(255, 255, 255, 0.35)';
+        deckEl.style.boxShadow = 'none';
+        deckEl.style.cursor = 'default';
+        return;
+    }
+
+    deckEl.style.opacity = '1';
+    deckEl.style.backgroundImage = "url('assets/cards_tatu/carta_reverso.png')";
+    deckEl.style.border = '2px solid rgba(255, 255, 255, 0.4)';
+    deckEl.style.cursor = 'pointer';
+
+    if (count === 1) {
+        // Exactamente 1 carta: plana en la mesa, sin capas debajo
+        const baseShadow = '0 3px 8px rgba(0, 0, 0, 0.55)';
+        deckEl.style.boxShadow = isHighlight 
+            ? `0 0 20px rgba(241, 196, 15, 0.9), ${baseShadow}`
+            : baseShadow;
+        return;
+    }
+
+    // Para 2 a 8 cartas: exactamente (count - 1) bordes de cartas debajo de la superior
+    // Para más de 8 cartas: escala progresiva hasta 14 capas para representar un mazo completo
+    const visibleEdges = (count <= 8) 
+        ? (count - 1) 
+        : Math.min(14, 7 + Math.floor((count - 8) / 3));
+
+    // Separación entre bordes: 1.9px para pocas cartas (se cuentan a simple vista), 1.2px para mazo grueso
+    const step = (count <= 5) ? 1.9 : ((count <= 10) ? 1.5 : 1.2);
+    const shadows = [];
+
+    // Brillo dorado de turno de robo si corresponde
+    if (isHighlight) {
+        shadows.push('0 0 22px rgba(241, 196, 15, 0.9)');
+    }
+
+    for (let i = 1; i <= visibleEdges; i++) {
+        const x = (i * step).toFixed(1);
+        const y = (i * step).toFixed(1);
+        const cardEdgeColor = (i % 2 === 0) ? '#e8e4db' : '#fcfaf6';
+        const separatorLine = (i % 2 === 0) ? '#281a10' : '#180e08';
+
+        shadows.push(`${x}px ${y}px 0 ${cardEdgeColor}`);
+        shadows.push(`${x}px ${(parseFloat(y) + 0.6).toFixed(1)}px 0 ${separatorLine}`);
+    }
+
+    // Sombra ambiental sobre la mesa
+    const totalX = (visibleEdges * step + 4).toFixed(1);
+    const totalY = (visibleEdges * step + 6).toFixed(1);
+    const blur = Math.min(18, 6 + visibleEdges).toFixed(1);
+    shadows.push(`${totalX}px ${totalY}px ${blur}px rgba(0, 0, 0, 0.65)`);
+
+    deckEl.style.boxShadow = shadows.join(', ');
+}
+window.actualizarVolumenMazo = actualizarVolumenMazo;
 
 // -------------------------------------------------------------
 // INTERACCIÓN DE JUGADOR HUMANO
