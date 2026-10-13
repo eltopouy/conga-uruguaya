@@ -33,11 +33,16 @@ function cargarConfigLocal() {
             const cfgDeck = document.getElementById('cfg-deck-size');
             const cfgJokers = document.getElementById('cfg-comodines');
             const cfgSound = document.getElementById('cfg-sonido');
+            const cfgPoints = document.getElementById('cfg-mostrar-puntos');
             if (cfgName) cfgName.value = engine.config.nombreJugador || 'TÚ';
             if (cfgLim) cfgLim.value = engine.config.limitePuntos || 100;
             if (cfgDeck) cfgDeck.value = engine.config.deckSize || 48;
             if (cfgJokers) cfgJokers.checked = engine.config.conComodines !== false;
             if (cfgSound) cfgSound.checked = !sound.muted;
+            if (cfgPoints) cfgPoints.checked = engine.config.mostrarPuntosCartas === true;
+        } else {
+            const cfgPoints = document.getElementById('cfg-mostrar-puntos');
+            if (cfgPoints) cfgPoints.checked = false;
         }
     } catch (e) {}
 }
@@ -49,18 +54,21 @@ function guardarConfigLocal() {
         const cfgDeck = parseInt(document.getElementById('cfg-deck-size').value) || 48;
         const cfgJokers = document.getElementById('cfg-comodines').checked;
         const cfgSound = document.getElementById('cfg-sonido').checked;
+        const cfgPoints = document.getElementById('cfg-mostrar-puntos') ? document.getElementById('cfg-mostrar-puntos').checked : false;
 
         engine.config.nombreJugador = cfgName;
         engine.config.limitePuntos = cfgLim;
         engine.config.deckSize = cfgDeck;
         engine.config.conComodines = cfgJokers;
+        engine.config.mostrarPuntosCartas = cfgPoints;
         sound.setMuted(!cfgSound);
 
         localStorage.setItem('conga_config', JSON.stringify({
             nombreJugador: cfgName,
             limitePuntos: cfgLim,
             deckSize: cfgDeck,
-            conComodines: cfgJokers
+            conComodines: cfgJokers,
+            mostrarPuntosCartas: cfgPoints
         }));
 
         cerrarModal('modal-config');
@@ -171,9 +179,18 @@ async function verificarTurnoBot() {
                 }
             }
             // Descarte normal
-            engine.descartarCarta(currentSeat, jugada.cardIndex);
-            playSound('card-discard');
-            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+            let discardRes = engine.descartarCarta(currentSeat, jugada.cardIndex);
+            if (!discardRes && currentPlayer.hand) {
+                // Fallback de resiliencia: descartar cualquier carta permitida de la mano
+                for (let k = 0; k < currentPlayer.hand.length; k++) {
+                    discardRes = engine.descartarCarta(currentSeat, k);
+                    if (discardRes) break;
+                }
+            }
+            if (discardRes) {
+                playSound('card-discard');
+                if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+            }
         }
     }
 
@@ -299,11 +316,13 @@ function renderJuego() {
                 cardEl.classList.add('selected-card');
             }
 
-            // Badge de ligada o suelta
-            const badge = document.createElement('div');
-            badge.className = `card-meld-badge ${meldedSet.has(carta.id) ? 'badge-ligada' : 'badge-suelta'}`;
-            badge.innerText = meldedSet.has(carta.id) ? "LIGADA" : `${carta.getPuntosSueltos ? carta.getPuntosSueltos() : 0}p`;
-            cardEl.appendChild(badge);
+            // Badge de ligada o suelta en la esquina de cada carta (oculto por defecto, configurable)
+            if (engine.config.mostrarPuntosCartas) {
+                const badge = document.createElement('div');
+                badge.className = `card-meld-badge ${meldedSet.has(carta.id) ? 'badge-ligada' : 'badge-suelta'}`;
+                badge.innerText = meldedSet.has(carta.id) ? "LIGADA" : `${carta.getPuntosSueltos ? carta.getPuntosSueltos() : 0}p`;
+                cardEl.appendChild(badge);
+            }
 
             // Permitir arrastre y reordenamiento manual de la carta con mouse o touch
             habilitarArrastreReorden(cardEl, idx, myPlayer.hand, plyHandFan);
@@ -315,12 +334,32 @@ function renderJuego() {
         const deadwoodEl = document.getElementById('deadwood-pts');
         const deadwoodBadge = document.getElementById('deadwood-badge');
         if (deadwoodEl && deadwoodBadge) {
-            deadwoodEl.innerText = `${analysis.puntosSueltos} pts`;
-            if (analysis.puntosSueltos <= (engine.config.limiteCorte || 5) && myPlayer.hand.length === 8 && engine.turnoSeat === miSeat && engine.fase === 'descartar') {
-                deadwoodBadge.classList.add('can-cut-text');
-                deadwoodBadge.title = "¡Cumples las condiciones para Cortar!";
+            let ptsAMostrar = analysis.puntosSueltos;
+            let esCortePosible = false;
+
+            if (myPlayer.hand.length === 8 && engine.turnoSeat === miSeat && engine.fase === 'descartar') {
+                if (selectedCardIndex !== null && selectedCardIndex >= 0 && selectedCardIndex < myPlayer.hand.length) {
+                    const manoSim = myPlayer.hand.filter((_, i) => i !== selectedCardIndex);
+                    const simAnalysis = engine.detectarMejoresMelds(manoSim);
+                    ptsAMostrar = simAnalysis.puntosSueltos;
+                    esCortePosible = engine.puedeCortar(miSeat, selectedCardIndex);
+                    deadwoodEl.innerText = `${ptsAMostrar} pts (al descartar)`;
+                } else {
+                    esCortePosible = engine.puedeCortar(miSeat);
+                    deadwoodEl.innerText = `${ptsAMostrar} pts`;
+                }
+
+                if (esCortePosible) {
+                    deadwoodBadge.classList.add('can-cut-text');
+                    deadwoodBadge.title = "¡Puedes cortar esta ronda!";
+                } else {
+                    deadwoodBadge.classList.remove('can-cut-text');
+                    deadwoodBadge.title = "";
+                }
             } else {
+                deadwoodEl.innerText = `${ptsAMostrar} pts`;
                 deadwoodBadge.classList.remove('can-cut-text');
+                deadwoodBadge.title = "";
             }
         }
     }
@@ -651,9 +690,11 @@ function mostrarModalFinRonda() {
     if (res.victoriaDirecta) {
         title.innerText = "🏆 ¡CONGA LIMPIA! PARTIDO GANADO 🏆";
         playSound('win');
+    } else if (res.mazoAgotado) {
+        title.innerText = "📦 Mazo agotado - Fin de Ronda";
     } else {
         const cortador = engine.players[res.cortadorSeat];
-        title.innerText = `✂️ ${cortador.name} ha cortado la ronda`;
+        title.innerText = `✂️ ${cortador ? cortador.name : 'Un jugador'} ha cortado la ronda`;
     }
 
     let html = '';
@@ -670,11 +711,44 @@ function mostrarModalFinRonda() {
                 <div style="font-size:0.85rem; color:#bbb; margin-bottom:6px;">${d.motivo}</div>
                 <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:#ddd;">
                     <span>Puntaje total acumulado:</span>
-                    <strong>${p.puntosAcumulados} / ${engine.config.limitePuntos} pts</strong>
+                    <strong>${p.puntosAcumulados} / ${engine.config.limitePuntos} pts ${p.eliminado ? '(Eliminado)' : ''}</strong>
                 </div>
             </div>
         `;
     });
+
+    // Reenganche automático para bots si corresponde
+    if (modoJuego === 'singleplayer') {
+        engine.players.forEach(p => {
+            if (p.isBot && engine.puedeReenganchar(p.seat)) {
+                engine.reenganchar(p.seat);
+                html += `
+                    <div style="background:rgba(39, 174, 96, 0.2); border:1px solid #27ae60; border-radius:8px; padding:8px; margin-top:8px; font-size:0.85rem; color:#2ecc71; text-align:center;">
+                        🔄 ${p.name} ha usado el reenganche con ${p.puntosAcumulados} pts.
+                    </div>
+                `;
+            }
+        });
+    }
+
+    const btnReenganchar = document.getElementById('btn-reenganchar');
+    if (btnReenganchar) {
+        if (engine.puedeReenganchar(miSeat)) {
+            const activos = engine.players.filter(x => !x.eliminado);
+            const maxPuntos = Math.max(...activos.map(x => x.puntosAcumulados));
+            btnReenganchar.innerText = `🔄 Reengancharse al Partido con ${maxPuntos} pts`;
+            btnReenganchar.style.display = 'flex';
+            btnReenganchar.onclick = () => {
+                engine.reenganchar(miSeat);
+                playSound('card-deal');
+                btnReenganchar.style.display = 'none';
+                mostrarModalFinRonda();
+                renderJuego();
+            };
+        } else {
+            btnReenganchar.style.display = 'none';
+        }
+    }
 
     if (engine.partidoFinalizado) {
         const ganador = engine.players[engine.ganadorPartido];
@@ -688,8 +762,8 @@ function mostrarModalFinRonda() {
     body.innerHTML = html;
     modal.style.display = 'flex';
 
-    // Activar botón flotante con cuenta regresiva de 3s
-    if (!engine.partidoFinalizado) {
+    // Activar botón flotante con cuenta regresiva de 4s
+    if (!engine.partidoFinalizado && !engine.puedeReenganchar(miSeat)) {
         iniciarConteoProximaMano();
     }
 }
@@ -769,6 +843,24 @@ document.querySelectorAll('.modal-close-btn, [data-close]').forEach(btn => {
         const target = btn.dataset.close || btn.closest('.modal-overlay').id;
         cerrarModal(target);
     });
+});
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay && overlay.id !== 'modal-fin-ronda' && overlay.id !== 'modal-sala') {
+            cerrarModal(overlay.id);
+        }
+    });
+});
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            if (overlay.id !== 'modal-fin-ronda' && overlay.style.display === 'flex') {
+                cerrarModal(overlay.id);
+            }
+        });
+    }
 });
 
 document.getElementById('btn-reglamento').addEventListener('click', () => abrirModal('modal-reglamento'));

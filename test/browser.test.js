@@ -225,6 +225,47 @@ const assert = require('assert');
             await page.close();
         });
 
+        // TEST 9: Puntos en esquinas de cartas ocultos por defecto y configurables
+        await runTest('Puntos en la esquina de cada carta quedan ocultos por defecto y son configurables', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath);
+
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(600);
+
+            // 1. Por defecto, ninguna carta debe tener el badge de puntos en la esquina
+            let badges = await page.$$('#player-hand-fan .card-meld-badge');
+            assert.strictEqual(badges.length, 0, 'Por defecto los puntos en las cartas deben estar ocultos');
+
+            // 2. Abrir configuración y activar la opción
+            await page.click('#btn-config');
+            await page.waitForTimeout(200);
+
+            const isChecked = await page.isChecked('#cfg-mostrar-puntos');
+            assert.strictEqual(isChecked, false, 'El checkbox debe estar desmarcado por defecto');
+
+            await page.check('#cfg-mostrar-puntos');
+            await page.click('#btn-guardar-config');
+            await page.waitForTimeout(300);
+
+            // 3. Tras activar la opción y guardar, cada carta debe mostrar su badge
+            badges = await page.$$('#player-hand-fan .card-meld-badge');
+            assert.strictEqual(badges.length, 7, 'Debe mostrar 7 badges de puntos/juego tras activarlo en configuración');
+
+            // 4. Volver a desactivar y guardar
+            await page.click('#btn-config');
+            await page.waitForTimeout(200);
+            await page.uncheck('#cfg-mostrar-puntos');
+            await page.click('#btn-guardar-config');
+            await page.waitForTimeout(300);
+
+            badges = await page.$$('#player-hand-fan .card-meld-badge');
+            assert.strictEqual(badges.length, 0, 'Los puntos deben volver a ocultarse');
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }

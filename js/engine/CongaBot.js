@@ -68,6 +68,11 @@ class CongaBot {
         let mejorAnalysis = null;
 
         for (let i = 0; i < bot.hand.length; i++) {
+            // Regla: no se puede tirar la misma carta que se acaba de levantar del pozo
+            if (engine.origenRobo === 'pozo' && engine.cartaRobada && bot.hand[i].id === engine.cartaRobada.id) {
+                continue;
+            }
+
             const manoSimulada = bot.hand.filter((_, idx) => idx !== i);
             const analysis = engine.detectarMejoresMelds(manoSimulada);
             const pts = analysis.puntosSueltos;

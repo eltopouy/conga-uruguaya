@@ -422,6 +422,101 @@ test('Agotamiento total de mazo y pozo finaliza la ronda sin bloqueo infinito', 
     assert.strictEqual(engine.resultadoRonda.mazoAgotado, true);
 });
 
+test('Configuración: mostrarPuntosCartas es false por defecto (oculto en esquinas)', () => {
+    const engine = new CongaEngine();
+    assert.strictEqual(engine.config.mostrarPuntosCartas, false);
+
+    const engineConPuntos = new CongaEngine({ mostrarPuntosCartas: true });
+    assert.strictEqual(engineConPuntos.config.mostrarPuntosCartas, true);
+});
+
+test('Mazo de 40 cartas: Escalera con comodín cubriendo el salto 7 -> 10 -> 11 es válida', () => {
+    const engine = new CongaEngine({ deckSize: 40 });
+    const run = [
+        new Carta(7, 'Espada'),
+        new Carta(0, 'Comodín', true),
+        new Carta(11, 'Espada')
+    ];
+    assert.strictEqual(engine.esEscaleraValida(run), true, '7 - Comodín - 11 debe ser válida en mazo de 40');
+
+    const runConDiez = [
+        new Carta(7, 'Oro'),
+        new Carta(10, 'Oro'),
+        new Carta(11, 'Oro')
+    ];
+    assert.strictEqual(engine.esEscaleraValida(runConDiez), true, '7 - 10 - 11 natural debe ser válida en mazo de 40');
+});
+
+test('puedeCortar rechaza cortar si se intenta descartar la carta recién alzada del pozo', () => {
+    const engine = new CongaEngine({ limiteCorte: 5 });
+    engine.configurarPartida(2);
+
+    const cartaPozo = new Carta(12, 'Espada');
+    engine.discardPile = [cartaPozo];
+    engine.fase = 'robar';
+    engine.turnoSeat = 0;
+
+    engine.players[0].hand = [
+        new Carta(1, 'Oro'), new Carta(2, 'Oro'), new Carta(3, 'Oro'),
+        new Carta(7, 'Espada'), new Carta(7, 'Basto'), new Carta(7, 'Copa'),
+        new Carta(2, 'Basto')
+    ];
+
+    engine.robarPozo(0); // Ahora tiene 8 cartas, la última es cartaPozo (12 de Espada)
+    const idxPozo = engine.players[0].hand.length - 1;
+
+    // Descartar la 12 de Espada dejaría 2 pts sueltos (<=5), pero FUE ALZADA DEL POZO en este turno
+    assert.strictEqual(engine.puedeCortar(0, idxPozo), false, 'No puede cortar descartando la carta alzada del pozo');
+});
+
+test('CongaBot jamás elige la carta alzada del pozo para descartar o cortar', () => {
+    const bot = new CongaBot('normal');
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+
+    const cartaPozo = new Carta(12, 'Copas');
+    engine.discardPile = [cartaPozo];
+    engine.turnoSeat = 1;
+    engine.fase = 'robar';
+
+    engine.players[1].hand = [
+        new Carta(1, 'Oro'), new Carta(2, 'Oro'), new Carta(3, 'Oro'),
+        new Carta(4, 'Oro'), new Carta(5, 'Oro'), new Carta(6, 'Oro'),
+        new Carta(7, 'Oro')
+    ];
+
+    engine.robarPozo(1);
+    const jugada = bot.decidirJugadaDescarte(engine, 1);
+    assert.notStrictEqual(jugada, null);
+    assert.notStrictEqual(jugada.carta.id, cartaPozo.id, 'El bot nunca debe descartar la carta que acaba de levantar del pozo');
+});
+
+test('Acomodo multi-pase: acomoda múltiples cartas consecutivas sin importar su orden en unmelded', () => {
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+
+    const cortador = engine.players[0];
+    cortador.hand = [
+        new Carta(3, 'Espada'), new Carta(4, 'Espada'), new Carta(5, 'Espada'),
+        new Carta(2, 'Oro')
+    ];
+    cortador.melds = [[cortador.hand[0], cortador.hand[1], cortador.hand[2]]];
+    cortador.unmelded = [cortador.hand[3]];
+    cortador.puntosSueltos = 2;
+
+    const rival = engine.players[1];
+    // Rival tiene 7 de Espada primero y 6 de Espada segundo en unmelded
+    rival.hand = [new Carta(7, 'Espada'), new Carta(6, 'Espada')];
+    rival.melds = [];
+    rival.unmelded = [rival.hand[0], rival.hand[1]];
+    rival.puntosSueltos = 13;
+
+    engine.aplicarAcomodoCartas(0);
+
+    assert.strictEqual(rival.unmelded.length, 0, 'Ambas cartas deben acomodarse');
+    assert.strictEqual(rival.puntosSueltos, 0, 'Puntos del rival deben ser 0 tras acomodo de 6 y 7');
+});
+
 console.log('\n========================================');
 console.log(`🏁 RESULTADO: ${passedTests}/${totalTests} tests pasados.`);
 console.log('========================================\n');

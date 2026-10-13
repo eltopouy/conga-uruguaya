@@ -66,6 +66,7 @@ class CongaEngine {
             limiteCorte: config.limiteCorte || 5,    // 5 o 3 puntos máximos para cortar
             permitirReenganche: config.permitirReenganche !== false,
             nombreJugador: config.nombreJugador || "TÚ",
+            mostrarPuntosCartas: config.mostrarPuntosCartas === true, // false por defecto (oculto en cartas)
             ...config
         };
 
@@ -278,30 +279,37 @@ class CongaEngine {
         const primerPalo = naturales[0].palo;
         if (!naturales.every(c => c.palo === primerPalo)) return false;
 
-        // Ordenar cartas naturales por valor ascendente
-        const vals = naturales.map(c => c.valor).sort((a, b) => a - b);
-
-        // En las cartas españolas de 40 cartas: [1,2,3,4,5,6,7, 10,11,12]
-        // Si hay salto de 7 a 10 en mazo de 40 cartas, son consecutivas.
         const es40 = (this.config.deckSize === 40);
+        const VALORES_40 = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12];
+        const maxRanks = es40 ? 10 : 12;
 
-        const getConsecutivoDist = (v1, v2) => {
-            if (v1 === v2) return -1; // Duplicado no permitido en escalera
-            if (es40 && v1 === 7 && v2 === 10) return 1; // Salto válido en 40 cartas
-            return v2 - v1;
+        const getRank = (val) => {
+            if (!es40) return val; // 1..12
+            const idx = VALORES_40.indexOf(val);
+            return idx !== -1 ? idx + 1 : val; // 1..10
         };
+
+        // Ordenar cartas naturales por rango ascendente
+        const ranks = naturales.map(c => getRank(c.valor)).sort((a, b) => a - b);
 
         // Verificar que los huecos puedan ser cubiertos por comodines
         let comodinesDisponibles = comodinesCount;
-        for (let i = 0; i < vals.length - 1; i++) {
-            const dist = getConsecutivoDist(vals[i], vals[i + 1]);
-            if (dist < 1) return false; // Repetido
+        for (let i = 0; i < ranks.length - 1; i++) {
+            const dist = ranks[i + 1] - ranks[i];
+            if (dist < 1) return false; // Duplicado no permitido en escalera
             const huecos = dist - 1;
             if (huecos > comodinesDisponibles) return false;
             comodinesDisponibles -= huecos;
         }
 
-        // Si sobran comodines, pueden ir al principio o al final si no se exceden los límites (1 a 12)
+        // Si sobran comodines, verificar que quepan dentro de los límites del mazo
+        const minRank = ranks[0];
+        const maxRank = ranks[ranks.length - 1];
+        const espaciosExtremos = (minRank - 1) + (maxRanks - maxRank);
+        if (comodinesDisponibles > espaciosExtremos) {
+            return false;
+        }
+
         return true;
     }
 
@@ -445,9 +453,17 @@ class CongaEngine {
     puedeCortar(seat, descartandoIndex = null) {
         if (this.fase !== 'descartar' || this.turnoSeat !== seat) return false;
         const player = this.players[seat];
+        if (!player || !player.hand) return false;
 
         // Para cortar, el jugador debe descartar 1 carta de sus 8, quedando con 7 cartas
         if (descartandoIndex !== null) {
+            if (descartandoIndex < 0 || descartandoIndex >= player.hand.length) return false;
+
+            // Regla: no se puede cortar descartando la misma carta recién robada del pozo
+            if (this.origenRobo === 'pozo' && this.cartaRobada && player.hand[descartandoIndex].id === this.cartaRobada.id) {
+                return false;
+            }
+
             const manoSimulada = player.hand.filter((_, i) => i !== descartandoIndex);
             const analysis = this.detectarMejoresMelds(manoSimulada);
             return (analysis.puntosSueltos <= this.config.limiteCorte || analysis.esConga);
@@ -493,24 +509,29 @@ class CongaEngine {
 
         this.players.forEach(p => {
             if (p.seat !== cortadorSeat && !p.eliminado) {
-                const unmeldedRestantes = [];
-                for (const c of p.unmelded) {
-                    let acomodada = false;
-                    for (const meld of meldsCortador) {
-                        // Intentar agregar la carta al meld existente
-                        const candidata = [...meld, c];
-                        if (this.esEscaleraValida(candidata) || this.esPiernaValida(candidata)) {
-                            meld.push(c);
-                            acomodada = true;
-                            break;
+                let huboAcomodo = true;
+                while (huboAcomodo) {
+                    huboAcomodo = false;
+                    const unmeldedRestantes = [];
+                    for (const c of p.unmelded) {
+                        let acomodada = false;
+                        for (const meld of meldsCortador) {
+                            // Intentar agregar la carta al meld existente
+                            const candidata = [...meld, c];
+                            if (this.esEscaleraValida(candidata) || this.esPiernaValida(candidata)) {
+                                meld.push(c);
+                                acomodada = true;
+                                huboAcomodo = true;
+                                break;
+                            }
+                        }
+                        if (!acomodada) {
+                            unmeldedRestantes.push(c);
                         }
                     }
-                    if (!acomodada) {
-                        unmeldedRestantes.push(c);
-                    }
+                    p.unmelded = unmeldedRestantes;
                 }
-                p.unmelded = unmeldedRestantes;
-                p.puntosSueltos = unmeldedRestantes.reduce((sum, x) => sum + x.getPuntosSueltos(), 0);
+                p.puntosSueltos = p.unmelded.reduce((sum, x) => sum + x.getPuntosSueltos(), 0);
             }
         });
     }
@@ -523,6 +544,7 @@ class CongaEngine {
         let victoriaDirecta = false;
         let pasaronAlCortador = false;
         let quienPasoAlCortador = null;
+        let minRivalPts = Infinity;
 
         // Caso 1: ¡CONGA LIMPIA! -> Gana la partida inmediatamente
         if (cortadorAnalysis.esCongaLimpia) {
@@ -563,8 +585,10 @@ class CongaEngine {
             for (const r of rivales) {
                 if (r.puntosSueltos <= ptsCortador) {
                     pasaronAlCortador = true;
-                    quienPasoAlCortador = r.seat;
-                    break;
+                    if (r.puntosSueltos < minRivalPts) {
+                        minRivalPts = r.puntosSueltos;
+                        quienPasoAlCortador = r.seat;
+                    }
                 }
             }
 
@@ -595,8 +619,8 @@ class CongaEngine {
                 let ptsSumar = p.puntosSueltos;
                 let motivo = `+${ptsSumar} Puntos sueltos`;
 
-                // Si pasaron al cortador, el rival que lo pasó se anota 0 puntos
-                if (pasaronAlCortador && p.seat === quienPasoAlCortador) {
+                // Si pasaron al cortador, el o los rivales con el puntaje mínimo se anotan 0 puntos
+                if (pasaronAlCortador && p.puntosSueltos === minRivalPts) {
                     ptsSumar = 0;
                     motivo = "¡Le ganaste al cortador! (0 Pts)";
                 }

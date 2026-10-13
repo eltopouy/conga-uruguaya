@@ -29,10 +29,10 @@ Simulador profesional del juego tradicional de naipes **Conga Uruguaya**, desarr
   * Efectos sonoros de deslizamiento, golpe sobre el paño, campanadas de corte y fanfarria de victoria que funcionan 100% offline.
 * **Diseño UI/UX Casino:**
   * Paño verde de fieltro con texturas y bordes de madera.
-  * Cartas en abanico con etiquetas interactivas de `LIGADA` y `SUELTA`.
+  * Cartas en abanico con diseño limpio tradicional y visualización opcional de puntos/juegos desde configuración.
   * Botón de **Auto-ordenar** para organizar la mano instantáneamente.
   * Adaptabilidad completa para celulares (vertical y horizontal) y computadoras.
-* **PWA & Offline:** Soporte para instalación como aplicación web nativa (Service Worker).
+* **PWA & Offline:** Soporte para instalación como aplicación web nativa (Service Worker v2).
 
 ---
 
@@ -45,10 +45,10 @@ Puedes jugar directamente desde el navegador en GitHub Pages:
 
 ## 🧪 Pruebas Automatizadas
 
-El proyecto cuenta con 41 pruebas automatizadas:
-* **24 Tests Unitarios:** Validación de mazo, combinaciones, algoritmo de melds, corte, acomodo, puntuaciones y bot.
+El proyecto cuenta con 49 pruebas automatizadas:
+* **31 Tests Unitarios:** Validación de mazo, combinaciones, algoritmo de melds, corte, acomodo, puntuaciones, compatibilidad con mazo de 40 cartas y bot.
 * **9 Tests de Simulación E2E:** Flujo completo 1v1 y 4P, reordenamiento manual de mano, audio, manifiesto y service worker.
-* **8 Tests en Navegador Real (Playwright):** Renderizado, interfaz gráfica, modales, arrastre interactivo con mouse/touch y responsividad mobile.
+* **9 Tests en Navegador Real (Playwright):** Renderizado, interfaz gráfica, modales, arrastre interactivo con mouse/touch, responsividad mobile y activación/desactivación de puntos desde configuración.
 
 Ejecutar pruebas:
 ```bash
