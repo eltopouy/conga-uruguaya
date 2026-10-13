@@ -517,6 +517,77 @@ test('Acomodo multi-pase: acomoda múltiples cartas consecutivas sin importar su
     assert.strictEqual(rival.puntosSueltos, 0, 'Puntos del rival deben ser 0 tras acomodo de 6 y 7');
 });
 
+test('Flujo interactivo de Corte y Acomodo (iniciarCorte -> colocarCarta -> finalizarCorte)', () => {
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+
+    // Jugador 0 tiene 8 cartas (fase descartar): Escalera 4-5-6 de Oro + 2 de Basto (suelta) + 12 de Espada (descarte)
+    const c0 = engine.players[0];
+    c0.hand = [
+        new Carta(4, 'Oro'), new Carta(5, 'Oro'), new Carta(6, 'Oro'),
+        new Carta(2, 'Basto'), new Carta(12, 'Espada')
+    ];
+    engine.fase = 'descartar';
+    engine.turnoSeat = 0;
+
+    // Jugador 1 tiene 7 de Oro (extensión de la escalera del cortador) y 10 de Copas (no liga)
+    const c1 = engine.players[1];
+    c1.hand = [new Carta(7, 'Oro', false, 'c1_7oro'), new Carta(10, 'Copas', false, 'c1_10copas')];
+
+    // Iniciar corte descartando la carta index 4 (12 de Espada)
+    const corteInfo = engine.iniciarCorte(0, 4);
+    assert.ok(corteInfo, 'El corte debe iniciarse exitosamente');
+    assert.strictEqual(engine.fase, 'acomodo', 'La fase debe cambiar a acomodo');
+    assert.strictEqual(corteInfo.permiteAcomodo, true, 'Corte con 2 pts debe permitir acomodo');
+    assert.strictEqual(c0.hand.length, 4, 'El cortador queda con 4 cartas tras descartar la de corte');
+
+    // Rival verifica si puede colocar sus cartas
+    const fit7 = engine.puedeColocarCarta(1, 'c1_7oro');
+    assert.ok(fit7, 'El 7 de Oro debe poder colocarse en la escalera 4-5-6');
+    const fit10 = engine.puedeColocarCarta(1, 'c1_10copas');
+    assert.strictEqual(fit10, null, 'El 10 de Copas no debe poder colocarse');
+
+    // Rival coloca el 7 de Oro interactivamente
+    const colocada = engine.colocarCarta(1, 'c1_7oro');
+    assert.strictEqual(colocada, true, 'La colocación debe ser exitosa');
+    assert.strictEqual(c1.hand.length, 1, 'La mano del rival se reduce a 1 carta');
+    assert.strictEqual(c1.puntosSueltos, 10, 'Puntos sueltos del rival se reducen a 10');
+    assert.strictEqual(engine.cartasAcomodadas.length, 1, 'Se registra en cartasAcomodadas');
+
+    // Finalizar corte
+    const fin = engine.finalizarCorte();
+    assert.strictEqual(fin, true, 'El corte debe finalizar correctamente');
+    assert.strictEqual(engine.fase, 'fin_ronda', 'Fase cambia a fin_ronda');
+    assert.ok(engine.resultadoRonda, 'Se computa el resultado de la ronda');
+});
+
+test('Corte en 0 o Conga bloquea la colocación de cartas', () => {
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+
+    // Jugador 0 tiene 8 cartas: Escalera 1 a 7 de Copas + 10 de Espada (descarte)
+    const c0 = engine.players[0];
+    c0.hand = [
+        new Carta(1, 'Copa'), new Carta(2, 'Copa'), new Carta(3, 'Copa'),
+        new Carta(4, 'Copa'), new Carta(5, 'Copa'), new Carta(6, 'Copa'), new Carta(7, 'Copa'),
+        new Carta(10, 'Espada')
+    ];
+    engine.fase = 'descartar';
+    engine.turnoSeat = 0;
+
+    const c1 = engine.players[1];
+    c1.hand = [new Carta(8, 'Copa', false, 'c1_8copa')];
+
+    // Corta con Conga
+    const corteInfo = engine.iniciarCorte(0, 7);
+    assert.ok(corteInfo);
+    assert.strictEqual(corteInfo.permiteAcomodo, false, 'Conga no debe permitir acomodo');
+
+    // El rival intenta colocar carta
+    const fit = engine.puedeColocarCarta(1, 'c1_8copa');
+    assert.strictEqual(fit, null, 'No se debe permitir colocar cartas ante Conga');
+});
+
 console.log('\n========================================');
 console.log(`🏁 RESULTADO: ${passedTests}/${totalTests} tests pasados.`);
 console.log('========================================\n');

@@ -183,6 +183,44 @@ const FirebaseManager = {
             })),
             ultimoCortador: engine.ultimoCortador,
             resultadoRonda: engine.resultadoRonda,
+            corteInfo: engine.corteInfo ? {
+                cortadorSeat: engine.corteInfo.cortadorSeat,
+                cortadorNombre: engine.corteInfo.cortadorNombre,
+                puntosSueltos: engine.corteInfo.puntosSueltos,
+                esConga: engine.corteInfo.esConga,
+                esCongaLimpia: engine.corteInfo.esCongaLimpia,
+                esCongaConComodin: engine.corteInfo.esCongaConComodin,
+                esCorteCero: engine.corteInfo.esCorteCero,
+                permiteAcomodo: engine.corteInfo.permiteAcomodo,
+                cartaDescarte: engine.corteInfo.cartaDescarte ? {
+                    valor: engine.corteInfo.cartaDescarte.valor,
+                    palo: engine.corteInfo.cartaDescarte.palo,
+                    esComodin: engine.corteInfo.cartaDescarte.esComodin,
+                    id: engine.corteInfo.cartaDescarte.id
+                } : null,
+                melds: (engine.corteInfo.melds || []).map(m => m.map(c => ({
+                    valor: c.valor,
+                    palo: c.palo,
+                    esComodin: c.esComodin,
+                    id: c.id
+                }))),
+                unmelded: (engine.corteInfo.unmelded || []).map(c => ({
+                    valor: c.valor,
+                    palo: c.palo,
+                    esComodin: c.esComodin,
+                    id: c.id
+                }))
+            } : null,
+            cartasAcomodadas: (engine.cartasAcomodadas || []).map(a => ({
+                carta: a.carta ? {
+                    valor: a.carta.valor,
+                    palo: a.carta.palo,
+                    esComodin: a.carta.esComodin,
+                    id: a.carta.id
+                } : null,
+                fromSeat: a.fromSeat,
+                meldIndex: a.meldIndex
+            })),
             partidoFinalizado: engine.partidoFinalizado,
             ganadorPartido: engine.ganadorPartido,
             ts: Date.now(),

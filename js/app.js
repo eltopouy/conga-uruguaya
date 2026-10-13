@@ -169,14 +169,9 @@ async function verificarTurnoBot() {
         if (jugada) {
             if (jugada.cortar) {
                 // El bot CORTA la ronda
-                const ok = engine.cortar(currentSeat, jugada.cardIndex);
-                if (ok) {
-                    playSound('cut');
-                    if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
-                    mostrarModalFinRonda();
-                    isBotThinking = false;
-                    return;
-                }
+                isBotThinking = false;
+                iniciarFaseAcomodoUI(currentSeat, jugada.cardIndex);
+                return;
             }
             // Descarte normal
             let discardRes = engine.descartarCarta(currentSeat, jugada.cardIndex);
@@ -209,6 +204,8 @@ async function verificarTurnoBot() {
 function renderJuego() {
     if (!engine || !engine.partidoIniciado) return;
 
+    const myPlayer = engine.players[miSeat];
+
     // GUARD: El botón de siguiente mano NUNCA debe mostrarse durante una mano activa ni tras terminar el partido
     if (engine.fase !== 'fin_ronda' || engine.partidoFinalizado) {
         ocultarBotonSiguienteMano();
@@ -225,10 +222,18 @@ function renderJuego() {
                 
                 let miniCardsHTML = '';
                 const cardCount = p.hand.length;
+                const revealCards = (engine.fase === 'acomodo' || engine.fase === 'fin_ronda');
+
                 for (let i = 0; i < cardCount; i++) {
                     const angle = (i - (cardCount - 1) / 2) * 5;
                     const yOffset = Math.abs(i - (cardCount - 1) / 2) * 1.5;
-                    miniCardsHTML += `<div class="mini-card-back" style="transform: rotate(${angle}deg) translateY(${yOffset}px);"></div>`;
+                    if (revealCards && p.hand[i]) {
+                        const c = p.hand[i];
+                        const assetUrl = (typeof c.getAssetUrl === 'function') ? c.getAssetUrl() : new Carta(c.valor, c.palo, c.esComodin, c.id).getAssetUrl();
+                        miniCardsHTML += `<div class="mini-card-front" style="background-image: url('${assetUrl}'); transform: rotate(${angle}deg) translateY(${yOffset}px);" title="${c.valor} de ${c.palo}"></div>`;
+                    } else {
+                        miniCardsHTML += `<div class="mini-card-back" style="transform: rotate(${angle}deg) translateY(${yOffset}px);"></div>`;
+                    }
                 }
 
                 badge.innerHTML = `
@@ -267,13 +272,160 @@ function renderJuego() {
         else discardEl.classList.remove('highlight-draw');
     }
 
+    // 2.5 Mesa de Cartas Bajadas (Corte y Acomodo)
+    const tableMeldsArea = document.getElementById('table-melds-area');
+    if (tableMeldsArea) {
+        if ((engine.fase === 'acomodo' || engine.fase === 'fin_ronda') && engine.corteInfo) {
+            tableMeldsArea.style.display = 'flex';
+            const corte = engine.corteInfo;
+            const titleEl = document.getElementById('table-melds-title');
+            const ptsEl = document.getElementById('table-melds-pts');
+            const containerEl = document.getElementById('table-melds-container');
+
+            if (titleEl) {
+                if (corte.esCongaLimpia) {
+                    titleEl.innerText = `🏆 ¡CONGA LIMPIA de ${corte.cortadorNombre}! (7 cartas del mismo palo)`;
+                } else if (corte.esCongaConComodin) {
+                    titleEl.innerText = `🔥 ¡CONGA de ${corte.cortadorNombre}! (con Comodín)`;
+                } else if (corte.esCorteCero) {
+                    titleEl.innerText = `⭐ ¡Corte con 0 Puntos de ${corte.cortadorNombre}!`;
+                } else {
+                    titleEl.innerText = `✂️ Corte de ${corte.cortadorNombre} (con ${corte.puntosSueltos} pts)`;
+                }
+            }
+
+            if (ptsEl) {
+                if (corte.esCongaLimpia) {
+                    ptsEl.innerText = `PARTIDO GANADO`;
+                } else if (corte.esCongaConComodin || corte.esCorteCero) {
+                    ptsEl.innerText = `-10 Pts (Sin colocación)`;
+                } else if (corte.permiteAcomodo) {
+                    if (engine.fase === 'acomodo') {
+                        ptsEl.innerText = (corte.cortadorSeat === miSeat) 
+                            ? `Esperando colocación de rivales...` 
+                            : `👉 ¡Coloca tus cartas sueltas en sus ligas!`;
+                    } else {
+                        ptsEl.innerText = `Ronda finalizada`;
+                    }
+                } else {
+                    ptsEl.innerText = ``;
+                }
+            }
+
+            if (containerEl) {
+                containerEl.innerHTML = '';
+
+                // Juegos del cortador
+                const meldsAMostrar = corte.melds || [];
+                meldsAMostrar.forEach((meld, mIdx) => {
+                    const groupEl = document.createElement('div');
+                    groupEl.className = 'meld-group-box';
+
+                    const gTitle = document.createElement('div');
+                    gTitle.className = 'meld-group-title';
+                    gTitle.innerText = `Juego #${mIdx + 1} (${meld.length} cartas)`;
+                    groupEl.appendChild(gTitle);
+
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'meld-cards-row';
+
+                    meld.forEach(c => {
+                        const cardMini = document.createElement('div');
+                        const esAcomodada = engine.cartasAcomodadas && engine.cartasAcomodadas.some(a => a.carta && a.carta.id === c.id);
+                        cardMini.className = `meld-card-mini ${esAcomodada ? 'card-acomodada' : ''}`;
+                        const url = (typeof c.getAssetUrl === 'function') ? c.getAssetUrl() : new Carta(c.valor, c.palo, c.esComodin, c.id).getAssetUrl();
+                        cardMini.style.backgroundImage = `url("${url}")`;
+                        cardMini.title = `${c.valor} de ${c.palo}${esAcomodada ? ' (Colocada por rival)' : ''}`;
+                        rowEl.appendChild(cardMini);
+                    });
+
+                    groupEl.appendChild(rowEl);
+                    containerEl.appendChild(groupEl);
+                });
+
+                // Cartas sueltas del cortador
+                if (corte.unmelded && corte.unmelded.length > 0) {
+                    const groupSuelta = document.createElement('div');
+                    groupSuelta.className = 'meld-group-box';
+
+                    const gTitle = document.createElement('div');
+                    gTitle.className = 'meld-group-title';
+                    gTitle.innerText = `Sueltas (${corte.puntosSueltos}p)`;
+                    groupSuelta.appendChild(gTitle);
+
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'meld-cards-row';
+
+                    corte.unmelded.forEach(c => {
+                        const cardMini = document.createElement('div');
+                        cardMini.className = 'meld-card-mini';
+                        const url = (typeof c.getAssetUrl === 'function') ? c.getAssetUrl() : new Carta(c.valor, c.palo, c.esComodin, c.id).getAssetUrl();
+                        cardMini.style.backgroundImage = `url("${url}")`;
+                        cardMini.title = `${c.valor} de ${c.palo}`;
+                        rowEl.appendChild(cardMini);
+                    });
+
+                    groupSuelta.appendChild(rowEl);
+                    containerEl.appendChild(groupSuelta);
+                }
+
+                // Carta con la que cortó (descarte)
+                if (corte.cartaDescarte) {
+                    const c = corte.cartaDescarte;
+                    const groupDesc = document.createElement('div');
+                    groupDesc.className = 'meld-group-box';
+
+                    const gTitle = document.createElement('div');
+                    gTitle.className = 'meld-group-title';
+                    gTitle.innerText = `Carta de Corte`;
+                    groupDesc.appendChild(gTitle);
+
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'meld-cards-row';
+
+                    const cardMini = document.createElement('div');
+                    cardMini.className = 'meld-card-mini';
+                    const url = (typeof c.getAssetUrl === 'function') ? c.getAssetUrl() : new Carta(c.valor, c.palo, c.esComodin, c.id).getAssetUrl();
+                    cardMini.style.backgroundImage = `url("${url}")`;
+                    cardMini.title = `Descarte: ${c.valor} de ${c.palo}`;
+                    rowEl.appendChild(cardMini);
+
+                    groupDesc.appendChild(rowEl);
+                    containerEl.appendChild(groupDesc);
+                }
+            }
+        } else {
+            tableMeldsArea.style.display = 'none';
+        }
+    }
+
     // 3. Banner de Estado y Turno
     const turnText = document.getElementById('turn-text');
     const turnIcon = document.getElementById('turn-icon');
     const banner = document.getElementById('turn-status-banner');
     
     if (turnText && banner) {
-        if (engine.turnoSeat === miSeat) {
+        if (engine.fase === 'acomodo') {
+            const corte = engine.corteInfo;
+            if (corte) {
+                if (corte.cortadorSeat === miSeat) {
+                    banner.classList.add('my-turn');
+                    turnIcon.innerText = "✂️";
+                    turnText.innerText = "Cortaste la ronda. Pulsa 'Ver Resultados' para ver los puntajes.";
+                } else if (corte.permiteAcomodo) {
+                    banner.classList.add('my-turn');
+                    turnIcon.innerText = "🃏";
+                    const tieneColocables = myPlayer && myPlayer.hand.some(c => engine.puedeColocarCarta(miSeat, c.id));
+                    turnText.innerText = tieneColocables 
+                        ? "¡Coloca tus cartas! Toca las cartas destacadas en verde o usa 'Colocar Mis Cartas'."
+                        : `${corte.cortadorNombre} cortó con ${corte.puntosSueltos} pts. No tienes cartas para colocar. Pulsa 'Ver Resultados'.`;
+                } else {
+                    banner.classList.remove('my-turn');
+                    turnIcon.innerText = "⭐";
+                    turnText.innerText = `${corte.cortadorNombre} cortó con 0 o Conga. Pulsa 'Ver Resultados'.`;
+                }
+            }
+        } else if (engine.turnoSeat === miSeat) {
             banner.classList.add('my-turn');
             turnIcon.innerText = "⭐";
             if (engine.fase === 'robar') {
@@ -291,7 +443,6 @@ function renderJuego() {
 
     // 4. Mano del Jugador Local (Seat miSeat)
     const plyHandFan = document.getElementById('player-hand-fan');
-    const myPlayer = engine.players[miSeat];
     if (plyHandFan && myPlayer) {
         plyHandFan.innerHTML = '';
         
@@ -317,15 +468,42 @@ function renderJuego() {
             }
 
             // Badge de ligada o suelta en la esquina de cada carta (oculto por defecto, configurable)
-            if (engine.config.mostrarPuntosCartas) {
+            if (engine.config.mostrarPuntosCartas && engine.fase !== 'acomodo') {
                 const badge = document.createElement('div');
                 badge.className = `card-meld-badge ${meldedSet.has(carta.id) ? 'badge-ligada' : 'badge-suelta'}`;
                 badge.innerText = meldedSet.has(carta.id) ? "LIGADA" : `${carta.getPuntosSueltos ? carta.getPuntosSueltos() : 0}p`;
                 cardEl.appendChild(badge);
             }
 
-            // Permitir arrastre y reordenamiento manual de la carta con mouse o touch
-            habilitarArrastreReorden(cardEl, idx, myPlayer.hand, plyHandFan);
+            // Comprobar si la carta se puede colocar durante fase de acomodo
+            const puedeColocar = (engine.fase === 'acomodo' && engine.corteInfo && engine.corteInfo.permiteAcomodo && miSeat !== engine.corteInfo.cortadorSeat && engine.puedeColocarCarta(miSeat, carta.id));
+
+            if (puedeColocar) {
+                cardEl.classList.add('card-placeable');
+                const badgeColocar = document.createElement('div');
+                badgeColocar.className = 'badge-colocar';
+                badgeColocar.innerText = "➕ COLOCAR";
+                cardEl.appendChild(badgeColocar);
+
+                cardEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+                        window.FirebaseManager.enviarAccion('colocar_carta', { cartaId: carta.id });
+                    } else {
+                        const ok = engine.colocarCarta(miSeat, carta.id);
+                        if (ok) {
+                            playSound('card-deal');
+                            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+                            renderJuego();
+                        }
+                    }
+                });
+            } else {
+                // Permitir arrastre y reordenamiento manual de la carta solo durante juego normal
+                if (engine.fase !== 'acomodo') {
+                    habilitarArrastreReorden(cardEl, idx, myPlayer.hand, plyHandFan);
+                }
+            }
 
             plyHandFan.appendChild(cardEl);
         });
@@ -369,23 +547,62 @@ function renderJuego() {
     const btnRobarPozo = document.getElementById('btn-robar-pozo');
     const btnDescartar = document.getElementById('btn-descartar');
     const btnCortar = document.getElementById('btn-cortar');
+    const btnAuto = document.getElementById('btn-auto-ordenar');
+    const btnAcomodarTodas = document.getElementById('btn-acomodar-todas');
+    const btnConfirmarCorte = document.getElementById('btn-confirmar-corte');
 
     const esMiTurno = (engine.turnoSeat === miSeat && myPlayer && !myPlayer.eliminado);
 
-    if (btnRobarMazo) {
-        btnRobarMazo.disabled = !(esMiTurno && engine.fase === 'robar');
-    }
-    if (btnRobarPozo) {
-        btnRobarPozo.disabled = !(esMiTurno && engine.fase === 'robar' && engine.discardPile.length > 0);
-    }
-    if (btnDescartar) {
-        btnDescartar.disabled = !(esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null);
-    }
-    if (btnCortar) {
-        const canCut = esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null && engine.puedeCortar(miSeat, selectedCardIndex);
-        btnCortar.disabled = !canCut;
-        if (canCut) btnCortar.classList.add('can-cut');
-        else btnCortar.classList.remove('can-cut');
+    if (engine.fase === 'acomodo') {
+        if (btnRobarMazo) btnRobarMazo.style.display = 'none';
+        if (btnRobarPozo) btnRobarPozo.style.display = 'none';
+        if (btnDescartar) btnDescartar.style.display = 'none';
+        if (btnCortar) btnCortar.style.display = 'none';
+        if (btnAuto) btnAuto.style.display = 'none';
+
+        const corte = engine.corteInfo;
+        const esRival = (corte && corte.cortadorSeat !== miSeat);
+        const tieneColocables = esRival && corte.permiteAcomodo && myPlayer && myPlayer.hand.some(c => engine.puedeColocarCarta(miSeat, c.id));
+
+        if (btnAcomodarTodas) {
+            if (esRival && corte.permiteAcomodo) {
+                btnAcomodarTodas.style.display = 'inline-flex';
+                btnAcomodarTodas.disabled = !tieneColocables;
+                btnAcomodarTodas.innerText = tieneColocables ? "🃏 Colocar Mis Cartas" : "✅ Cartas Colocadas";
+            } else {
+                btnAcomodarTodas.style.display = 'none';
+            }
+        }
+
+        if (btnConfirmarCorte) {
+            btnConfirmarCorte.style.display = 'inline-flex';
+            btnConfirmarCorte.innerText = "📊 Ver Resultados";
+        }
+    } else {
+        if (btnRobarMazo) {
+            btnRobarMazo.style.display = '';
+            btnRobarMazo.disabled = !(esMiTurno && engine.fase === 'robar');
+        }
+        if (btnRobarPozo) {
+            btnRobarPozo.style.display = '';
+            btnRobarPozo.disabled = !(esMiTurno && engine.fase === 'robar' && engine.discardPile.length > 0);
+        }
+        if (btnDescartar) {
+            btnDescartar.style.display = '';
+            btnDescartar.disabled = !(esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null);
+        }
+        if (btnCortar) {
+            btnCortar.style.display = '';
+            const canCut = esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null && engine.puedeCortar(miSeat, selectedCardIndex);
+            btnCortar.disabled = !canCut;
+            if (canCut) btnCortar.classList.add('can-cut');
+            else btnCortar.classList.remove('can-cut');
+        }
+        if (btnAuto) {
+            btnAuto.style.display = '';
+        }
+        if (btnAcomodarTodas) btnAcomodarTodas.style.display = 'none';
+        if (btnConfirmarCorte) btnConfirmarCorte.style.display = 'none';
     }
 }
 
@@ -657,12 +874,31 @@ document.getElementById('btn-cortar').addEventListener('click', () => {
     if (modoJuego === 'multiplayer' && miRol !== 'creador') {
         window.FirebaseManager.enviarAccion('cortar', { cardIndex: idx });
     } else {
-        const ok = engine.cortar(miSeat, idx);
-        if (ok) {
-            playSound('cut');
-            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
-            mostrarModalFinRonda();
+        iniciarFaseAcomodoUI(miSeat, idx);
+    }
+});
+
+// Botones de Fase de Acomodo
+document.getElementById('btn-acomodar-todas').addEventListener('click', () => {
+    if (!engine || engine.fase !== 'acomodo') return;
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        window.FirebaseManager.enviarAccion('acomodar_todas');
+    } else {
+        const totalPuestas = engine.acomodarTodasDelJugador(miSeat);
+        if (totalPuestas > 0) {
+            playSound('card-deal');
         }
+        if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+        renderJuego();
+    }
+});
+
+document.getElementById('btn-confirmar-corte').addEventListener('click', () => {
+    if (!engine || engine.fase !== 'acomodo') return;
+    if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+        window.FirebaseManager.enviarAccion('confirmar_corte');
+    } else {
+        finalizarFaseAcomodoUI();
     }
 });
 
@@ -674,6 +910,46 @@ document.getElementById('btn-auto-ordenar').addEventListener('click', () => {
     playSound('card-deal');
     renderJuego();
 });
+
+// -------------------------------------------------------------
+// CONTROL DE CORTE Y FASE DE ACOMODO (LAYOFFS)
+// -------------------------------------------------------------
+function iniciarFaseAcomodoUI(cortadorSeat, cardIndex) {
+    if (!engine || !engine.partidoIniciado) return;
+    const corteInfo = engine.iniciarCorte(cortadorSeat, cardIndex);
+    if (!corteInfo) return;
+
+    playSound('cut');
+    selectedCardIndex = null;
+
+    // Si permite acomodo (1 a 5 pts), los bots rivales acomodan sus cartas automáticamente
+    if (corteInfo.permiteAcomodo) {
+        engine.players.forEach(p => {
+            if (p.isBot && p.seat !== cortadorSeat && !p.eliminado) {
+                engine.acomodarTodasDelJugador(p.seat);
+            }
+        });
+    }
+
+    if (modoJuego === 'multiplayer') {
+        window.FirebaseManager.sincronizarEstado(engine);
+    }
+
+    renderJuego();
+}
+
+function finalizarFaseAcomodoUI() {
+    if (!engine) return;
+    const ok = engine.finalizarCorte();
+    if (!ok && engine.fase !== 'fin_ronda') return;
+
+    if (modoJuego === 'multiplayer') {
+        window.FirebaseManager.sincronizarEstado(engine);
+    }
+
+    renderJuego();
+    mostrarModalFinRonda();
+}
 
 // -------------------------------------------------------------
 // MODAL FIN DE RONDA Y PROGRESIÓN FLUIDA
@@ -700,6 +976,33 @@ function mostrarModalFinRonda() {
     let html = '';
     res.detalles.forEach(d => {
         const p = engine.players[d.seat];
+        let meldsHTML = '';
+        if (p.melds && p.melds.length > 0) {
+            meldsHTML += `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center;">
+                <span style="font-size:0.75rem; color:#f1c40f; font-weight:bold;">Ligas:</span>`;
+            p.melds.forEach(m => {
+                meldsHTML += `<div style="display:flex; background:rgba(0,0,0,0.3); padding:2px 4px; border-radius:4px; margin-right:4px;">`;
+                m.forEach(c => {
+                    const url = (typeof c.getAssetUrl === 'function') ? c.getAssetUrl() : new Carta(c.valor, c.palo, c.esComodin, c.id).getAssetUrl();
+                    meldsHTML += `<div class="meld-card-mini" style="background-image:url('${url}'); width:34px; height:50px; margin:0 -4px;" title="${c.valor} de ${c.palo}"></div>`;
+                });
+                meldsHTML += `</div>`;
+            });
+            meldsHTML += `</div>`;
+        }
+
+        let unmeldedHTML = '';
+        if (p.unmelded && p.unmelded.length > 0) {
+            unmeldedHTML += `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; align-items:center;">
+                <span style="font-size:0.75rem; color:#e74c3c; font-weight:bold;">Sueltas (${p.puntosSueltos}p):</span>
+                <div style="display:flex; margin-left:4px;">`;
+            p.unmelded.forEach(c => {
+                const url = (typeof c.getAssetUrl === 'function') ? c.getAssetUrl() : new Carta(c.valor, c.palo, c.esComodin, c.id).getAssetUrl();
+                unmeldedHTML += `<div class="meld-card-mini" style="background-image:url('${url}'); width:34px; height:50px; margin:0 -4px;" title="${c.valor} de ${c.palo}"></div>`;
+            });
+            unmeldedHTML += `</div></div>`;
+        }
+
         html += `
             <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:12px; margin-bottom:8px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -709,10 +1012,12 @@ function mostrarModalFinRonda() {
                     </span>
                 </div>
                 <div style="font-size:0.85rem; color:#bbb; margin-bottom:6px;">${d.motivo}</div>
-                <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:#ddd;">
+                <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:#ddd; margin-bottom:4px;">
                     <span>Puntaje total acumulado:</span>
                     <strong>${p.puntosAcumulados} / ${engine.config.limitePuntos} pts ${p.eliminado ? '(Eliminado)' : ''}</strong>
                 </div>
+                ${meldsHTML}
+                ${unmeldedHTML}
             </div>
         `;
     });
@@ -812,6 +1117,9 @@ function avanzarSiguienteMano() {
         return; // Invitado espera actualización del anfitrión
     }
 
+    const tableMeldsArea = document.getElementById('table-melds-area');
+    if (tableMeldsArea) tableMeldsArea.style.display = 'none';
+
     engine.iniciarRonda();
     playSound('shuffle');
     if (modoJuego === 'multiplayer') {
@@ -906,7 +1214,7 @@ function procesarAccionRemota(accion) {
     ultimaAccionProcesadaTs = accion.ts || Date.now();
 
     const seat = accion.seat;
-    if (seat !== engine.turnoSeat) return;
+    if (engine.fase !== 'acomodo' && seat !== engine.turnoSeat) return;
 
     if (accion.tipo === 'robar_mazo') {
         if (engine.fase === 'robar') {
@@ -932,12 +1240,23 @@ function procesarAccionRemota(accion) {
         }
     } else if (accion.tipo === 'cortar') {
         if (engine.fase === 'descartar' && typeof accion.payload?.cardIndex === 'number') {
-            const ok = engine.cortar(seat, accion.payload.cardIndex);
-            if (ok) {
-                playSound('cut');
-                window.FirebaseManager.sincronizarEstado(engine);
-                mostrarModalFinRonda();
-            }
+            iniciarFaseAcomodoUI(seat, accion.payload.cardIndex);
+        }
+    } else if (accion.tipo === 'colocar_carta') {
+        if (engine.fase === 'acomodo' && accion.payload?.cartaId) {
+            engine.colocarCarta(seat, accion.payload.cartaId);
+            window.FirebaseManager.sincronizarEstado(engine);
+            renderJuego();
+        }
+    } else if (accion.tipo === 'acomodar_todas') {
+        if (engine.fase === 'acomodo') {
+            engine.acomodarTodasDelJugador(seat);
+            window.FirebaseManager.sincronizarEstado(engine);
+            renderJuego();
+        }
+    } else if (accion.tipo === 'confirmar_corte') {
+        if (engine.fase === 'acomodo') {
+            finalizarFaseAcomodoUI();
         }
     }
 }
@@ -952,6 +1271,32 @@ function aplicarEstadoJuegoRemoto(estadoJuego) {
     engine.ultimoCortador = estadoJuego.ultimoCortador;
     engine.partidoFinalizado = !!estadoJuego.partidoFinalizado;
     engine.ganadorPartido = estadoJuego.ganadorPartido;
+
+    // Información de corte y acomodo
+    if (estadoJuego.corteInfo) {
+        engine.corteInfo = {
+            ...estadoJuego.corteInfo,
+            melds: (estadoJuego.corteInfo.melds || []).map(m => m.map(c => new Carta(c.valor, c.palo, c.esComodin, c.id))),
+            unmelded: (estadoJuego.corteInfo.unmelded || []).map(c => new Carta(c.valor, c.palo, c.esComodin, c.id)),
+            cartaDescarte: estadoJuego.corteInfo.cartaDescarte ? new Carta(
+                estadoJuego.corteInfo.cartaDescarte.valor,
+                estadoJuego.corteInfo.cartaDescarte.palo,
+                estadoJuego.corteInfo.cartaDescarte.esComodin,
+                estadoJuego.corteInfo.cartaDescarte.id
+            ) : null
+        };
+    } else {
+        engine.corteInfo = null;
+    }
+
+    if (Array.isArray(estadoJuego.cartasAcomodadas)) {
+        engine.cartasAcomodadas = estadoJuego.cartasAcomodadas.map(a => ({
+            ...a,
+            carta: a.carta ? new Carta(a.carta.valor, a.carta.palo, a.carta.esComodin, a.carta.id) : null
+        }));
+    } else {
+        engine.cartasAcomodadas = [];
+    }
 
     // Pozo de descarte
     if (Array.isArray(estadoJuego.discardPile)) {

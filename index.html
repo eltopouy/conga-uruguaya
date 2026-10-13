@@ -52,6 +52,15 @@
             </div>
         </main>
 
+        <!-- Mesa de Cartas Bajadas (Corte y Acomodo) -->
+        <section id="table-melds-area" style="display:none;">
+            <div id="table-melds-header">
+                <span id="table-melds-title">✂️ Cartas Bajadas del Cortador</span>
+                <span id="table-melds-pts"></span>
+            </div>
+            <div id="table-melds-container"></div>
+        </section>
+
         <!-- Banner de Estado y Turno -->
         <div id="turn-status-banner">
             <span id="turn-icon">⏳</span>
@@ -74,6 +83,9 @@
             <button id="btn-descartar" class="btn-action" disabled>🎴 Descartar</button>
             <button id="btn-cortar" class="btn-action btn-cut-action" disabled>✂️ Cortar</button>
             <button id="btn-auto-ordenar" class="btn-action">🃏 Auto-ordenar</button>
+            <!-- Botones durante Fase de Corte y Acomodo -->
+            <button id="btn-acomodar-todas" class="btn-action" style="display:none; background:#27ae60; color:#fff; font-weight:bold;">🃏 Colocar Mis Cartas</button>
+            <button id="btn-confirmar-corte" class="btn-action btn-cut-action" style="display:none; font-weight:bold;">📊 Ver Resultados</button>
         </footer>
 
         <!-- Botón Flotante Siguiente Mano -->

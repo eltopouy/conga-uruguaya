@@ -145,6 +145,8 @@ class CongaEngine {
         this.origenRobo = null;
         this.ultimoCortador = null;
         this.resultadoRonda = null;
+        this.corteInfo = null;
+        this.cartasAcomodadas = [];
 
         // Limpiar manos de los jugadores activos
         this.players.forEach(p => {
@@ -476,64 +478,170 @@ class CongaEngine {
         return false;
     }
 
-    cortar(seat, cardIndexDescarte) {
-        if (!this.puedeCortar(seat, cardIndexDescarte)) return false;
+    iniciarCorte(seat, cardIndexDescarte) {
+        if (!this.puedeCortar(seat, cardIndexDescarte)) return null;
 
         const player = this.players[seat];
         const [cartaDescarte] = player.hand.splice(cardIndexDescarte, 1);
         this.discardPile.push(cartaDescarte);
 
         this.ultimoCortador = seat;
-        this.fase = 'fin_ronda';
+        this.fase = 'acomodo';
+        this.cartaRobada = null;
+        this.origenRobo = null;
+        this.cartasAcomodadas = [];
 
         // Procesar melds finales de todos
         this.actualizarMeldsTodos();
 
-        // Aplicar fase de acomodo (layoffs) si el cortador NO cortó en 0 (-10 o Conga)
         const cortadorAnalysis = this.detectarMejoresMelds(player.hand);
-        
-        if (!cortadorAnalysis.esCorteCero && !cortadorAnalysis.esConga) {
-            this.aplicarAcomodoCartas(seat);
+        const permiteAcomodo = (!cortadorAnalysis.esCorteCero && !cortadorAnalysis.esConga);
+
+        this.corteInfo = {
+            cortadorSeat: seat,
+            cortadorNombre: player.name,
+            cartaDescarte,
+            cortadorAnalysis,
+            puntosSueltos: cortadorAnalysis.puntosSueltos,
+            esConga: cortadorAnalysis.esConga,
+            esCongaLimpia: cortadorAnalysis.esCongaLimpia,
+            esCongaConComodin: cortadorAnalysis.esCongaConComodin,
+            esCorteCero: cortadorAnalysis.esCorteCero,
+            permiteAcomodo,
+            melds: cortadorAnalysis.melds.map(m => [...m]),
+            unmelded: [...cortadorAnalysis.unmelded]
+        };
+
+        return this.corteInfo;
+    }
+
+    puedeColocarCarta(seat, cartaId, targetCortadorSeat = null) {
+        const cortadorSeat = (targetCortadorSeat !== null) ? targetCortadorSeat : this.ultimoCortador;
+        if (cortadorSeat === null || seat === cortadorSeat) return null;
+        if (this.corteInfo && !this.corteInfo.permiteAcomodo) return null;
+
+        const player = this.players[seat];
+        const cortador = this.players[cortadorSeat];
+        if (!player || !cortador || !cortador.melds) return null;
+
+        const carta = (player.unmelded && player.unmelded.find(c => c.id === cartaId)) ||
+                      (player.hand && player.hand.find(c => c.id === cartaId));
+        if (!carta) return null;
+
+        for (let mIdx = 0; mIdx < cortador.melds.length; mIdx++) {
+            const meld = cortador.melds[mIdx];
+            const candidata = [...meld, carta];
+            if (this.esEscaleraValida(candidata) || this.esPiernaValida(candidata)) {
+                return { meldIndex: mIdx, meld, cortadorSeat };
+            }
+        }
+        return null;
+    }
+
+    colocarCarta(seat, cartaId, targetCortadorSeat = null) {
+        const fit = this.puedeColocarCarta(seat, cartaId, targetCortadorSeat);
+        if (!fit) return false;
+
+        const cortadorSeat = fit.cortadorSeat;
+        const cortador = this.players[cortadorSeat];
+        const player = this.players[seat];
+
+        // Remover de unmelded y hand si existen
+        let carta = null;
+        if (player.unmelded) {
+            const unmeldedIdx = player.unmelded.findIndex(c => c.id === cartaId);
+            if (unmeldedIdx !== -1) {
+                [carta] = player.unmelded.splice(unmeldedIdx, 1);
+            }
         }
 
-        // Calcular puntajes de la ronda
-        this.calcularPuntajesRonda(cortadorAnalysis);
+        if (player.hand) {
+            const handIdx = player.hand.findIndex(c => c.id === cartaId);
+            if (handIdx !== -1) {
+                const [cHand] = player.hand.splice(handIdx, 1);
+                if (!carta) carta = cHand;
+            }
+        }
 
+        if (!carta) return false;
+
+        cortador.melds[fit.meldIndex].push(carta);
+
+        // Mantener corteInfo.melds sincronizado para la UI
+        if (this.corteInfo && this.corteInfo.melds && this.corteInfo.melds[fit.meldIndex]) {
+            if (!this.corteInfo.melds[fit.meldIndex].some(c => c.id === carta.id)) {
+                this.corteInfo.melds[fit.meldIndex].push(carta);
+            }
+        }
+
+        if (!this.cartasAcomodadas) this.cartasAcomodadas = [];
+        this.cartasAcomodadas.push({
+            carta,
+            fromSeat: seat,
+            meldIndex: fit.meldIndex
+        });
+
+        if (player.unmelded) {
+            player.puntosSueltos = player.unmelded.reduce((s, x) => s + x.getPuntosSueltos(), 0);
+        }
         return true;
     }
 
-    // Layoffs: otros jugadores pueden ligar cartas sueltas en las combinaciones del cortador
-    aplicarAcomodoCartas(cortadorSeat) {
-        const cortador = this.players[cortadorSeat];
-        const meldsCortador = cortador.melds;
+    acomodarTodasDelJugador(seat, targetCortadorSeat = null) {
+        const cortadorSeat = (targetCortadorSeat !== null) ? targetCortadorSeat : this.ultimoCortador;
+        if (cortadorSeat === null) return 0;
+        if (this.corteInfo && !this.corteInfo.permiteAcomodo) return 0;
 
+        let colocadas = 0;
+        let huboCambio = true;
+        while (huboCambio) {
+            huboCambio = false;
+            const player = this.players[seat];
+            if (!player || !player.unmelded) break;
+            const candidatos = [...player.unmelded];
+            for (const c of candidatos) {
+                if (this.colocarCarta(seat, c.id, cortadorSeat)) {
+                    colocadas++;
+                    huboCambio = true;
+                    break;
+                }
+            }
+        }
+        return colocadas;
+    }
+
+    aplicarAcomodoCartas(cortadorSeat) {
+        if (this.ultimoCortador === null && typeof cortadorSeat === 'number') {
+            this.ultimoCortador = cortadorSeat;
+        }
         this.players.forEach(p => {
             if (p.seat !== cortadorSeat && !p.eliminado) {
-                let huboAcomodo = true;
-                while (huboAcomodo) {
-                    huboAcomodo = false;
-                    const unmeldedRestantes = [];
-                    for (const c of p.unmelded) {
-                        let acomodada = false;
-                        for (const meld of meldsCortador) {
-                            // Intentar agregar la carta al meld existente
-                            const candidata = [...meld, c];
-                            if (this.esEscaleraValida(candidata) || this.esPiernaValida(candidata)) {
-                                meld.push(c);
-                                acomodada = true;
-                                huboAcomodo = true;
-                                break;
-                            }
-                        }
-                        if (!acomodada) {
-                            unmeldedRestantes.push(c);
-                        }
-                    }
-                    p.unmelded = unmeldedRestantes;
-                }
-                p.puntosSueltos = p.unmelded.reduce((sum, x) => sum + x.getPuntosSueltos(), 0);
+                this.acomodarTodasDelJugador(p.seat, cortadorSeat);
             }
         });
+    }
+
+    finalizarCorte() {
+        if (this.fase !== 'acomodo' && this.fase !== 'fin_ronda') return false;
+
+        const cortador = this.players[this.ultimoCortador];
+        const cortadorAnalysis = this.corteInfo ? this.corteInfo.cortadorAnalysis : this.detectarMejoresMelds(cortador.hand);
+
+        this.fase = 'fin_ronda';
+        this.calcularPuntajesRonda(cortadorAnalysis);
+        return true;
+    }
+
+    cortar(seat, cardIndexDescarte) {
+        const corteInfo = this.iniciarCorte(seat, cardIndexDescarte);
+        if (!corteInfo) return false;
+
+        if (corteInfo.permiteAcomodo) {
+            this.aplicarAcomodoCartas(seat);
+        }
+
+        this.finalizarCorte();
+        return true;
     }
 
     calcularPuntajesRonda(cortadorAnalysis) {

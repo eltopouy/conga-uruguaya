@@ -266,6 +266,78 @@ const assert = require('assert');
             await page.close();
         });
 
+        // TEST 10: Cartas bajadas en la mesa al cortar y colocación interactiva de cartas
+        await runTest('Al cortar, se muestran las cartas del cortador en la mesa y se habilita la colocación de cartas', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath);
+
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(500);
+
+            // Simular corte del bot con escalera 4-5-6 de Oro y 2 pts sueltos
+            await page.evaluate(() => {
+                window.engine.players[1].hand = [
+                    new window.Carta(4, 'Oro', false, 'b_4oro'),
+                    new window.Carta(5, 'Oro', false, 'b_5oro'),
+                    new window.Carta(6, 'Oro', false, 'b_6oro'),
+                    new window.Carta(2, 'Espada', false, 'b_2espada'),
+                    new window.Carta(12, 'Copa', false, 'b_12copa')
+                ];
+                window.engine.players[0].hand = [
+                    new window.Carta(7, 'Oro', false, 'p_7oro'),
+                    new window.Carta(11, 'Basto', false, 'p_11basto')
+                ];
+                window.engine.turnoSeat = 1;
+                window.engine.fase = 'descartar';
+                window.iniciarFaseAcomodoUI(1, 4);
+            });
+
+            await page.waitForTimeout(300);
+
+            // 1. La mesa de cartas bajadas (#table-melds-area) debe ser visible
+            const meldsAreaVisible = await page.isVisible('#table-melds-area');
+            assert.strictEqual(meldsAreaVisible, true, 'La sección #table-melds-area debe ser visible al cortar');
+
+            // 2. Debe renderizar grupos de juego del cortador
+            const meldCards = await page.$$('#table-melds-container .meld-card-mini');
+            assert(meldCards.length >= 3, 'Deben mostrarse las cartas del juego del cortador');
+
+            // 3. Las cartas de los rivales deben revelarse boca arriba (.mini-card-front)
+            const rivalFrontCards = await page.$$('#opponents-area .mini-card-front');
+            assert(rivalFrontCards.length > 0, 'Las cartas del rival deben revelarse boca arriba al cortar');
+
+            // 4. La carta 7 de Oro del jugador humano debe tener clase .card-placeable y badge COLOCAR
+            const placeableCards = await page.$$('#player-hand-fan .card-placeable');
+            assert.strictEqual(placeableCards.length, 1, 'Debe haber exactamente 1 carta para colocar (7 de Oro)');
+
+            const badgeColocar = await page.$('#player-hand-fan .badge-colocar');
+            assert(badgeColocar !== null, 'Debe mostrar el badge "➕ COLOCAR"');
+
+            // 5. Botones de colocación deben estar visibles
+            const btnColocarVisible = await page.isVisible('#btn-acomodar-todas');
+            const btnConfirmarVisible = await page.isVisible('#btn-confirmar-corte');
+            assert.strictEqual(btnColocarVisible, true, 'El botón #btn-acomodar-todas debe ser visible');
+            assert.strictEqual(btnConfirmarVisible, true, 'El botón #btn-confirmar-corte debe ser visible');
+
+            // 6. Clic en la carta colocable para agregarla al juego del cortador
+            await placeableCards[0].click();
+            await page.waitForTimeout(200);
+
+            // 7. La carta acomodada debe figurar con la clase .card-acomodada
+            const acomodadas = await page.$$('#table-melds-container .card-acomodada');
+            assert(acomodadas.length >= 1, 'La carta colocada debe aparecer destacada en la mesa');
+
+            // 8. Confirmar corte y verificar apertura del modal de fin de ronda
+            await page.click('#btn-confirmar-corte');
+            await page.waitForTimeout(300);
+
+            const modalFinRondaVisible = await page.isVisible('#modal-fin-ronda');
+            assert.strictEqual(modalFinRondaVisible, true, 'El modal de fin de ronda debe mostrarse');
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }
