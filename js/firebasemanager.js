@@ -297,6 +297,117 @@ const FirebaseManager = {
         }, 8000);
     },
 
+    getMiSeat: () => miSeat,
+    getMiRol: () => miRol,
+    getCodigoSala: () => codigoSalaActual,
+    getRoomRef: () => roomRef,
+
+    // Chat en Tiempo Real
+    enviarMensajeChat: (texto, tipo = 'texto') => {
+        if (!roomRef) return;
+        const msg = {
+            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            seat: miSeat,
+            nombre: (window.engine && window.engine.players[miSeat] && window.engine.players[miSeat].name)
+                ? window.engine.players[miSeat].name
+                : (miSeat === 0 ? 'Anfitrión' : 'Invitado'),
+            texto: (texto || '').trim().substring(0, 150),
+            tipo,
+            ts: Date.now()
+        };
+        roomRef.child('chat').push(msg);
+    },
+
+    escucharChat: (callback) => {
+        if (!roomRef) return;
+        roomRef.child('chat').limitToLast(50).on('child_added', (snap) => {
+            if (!snap.exists()) return;
+            callback(snap.val());
+        });
+    },
+
+    // Señalización WebRTC para Llamadas de Voz P2P
+    registrarParticipanteVoz: (seat, info = {}) => {
+        if (!roomRef) return;
+        const partRef = roomRef.child(`voz/participantes/${seat}`);
+        partRef.set({
+            seat,
+            name: info.name || `Jugador ${seat}`,
+            speaking: !!info.speaking,
+            ts: Date.now()
+        });
+        try {
+            partRef.onDisconnect().remove();
+        } catch (_) {}
+    },
+
+    actualizarEstadoHablandoVoz: (seat, speaking) => {
+        if (!roomRef) return;
+        roomRef.child(`voz/participantes/${seat}/speaking`).set(!!speaking).catch(() => {});
+    },
+
+    removerParticipanteVoz: (seat) => {
+        if (!roomRef) return;
+        roomRef.child(`voz/participantes/${seat}`).remove().catch(() => {});
+    },
+
+    escucharParticipantesVoz: (callback) => {
+        if (!roomRef) return;
+        roomRef.child('voz/participantes').on('value', (snap) => {
+            const parts = snap.exists() ? snap.val() : {};
+            callback(parts);
+        });
+    },
+
+    enviarOfertaVoz: (offer) => {
+        if (!roomRef) return;
+        roomRef.child('voz/signals/offer').set({
+            fromSeat: miSeat,
+            sdp: offer,
+            ts: Date.now()
+        });
+    },
+
+    escucharOfertaVoz: (callback) => {
+        if (!roomRef) return;
+        roomRef.child('voz/signals/offer').on('value', (snap) => {
+            if (snap.exists()) callback(snap.val());
+        });
+    },
+
+    enviarRespuestaVoz: (answer) => {
+        if (!roomRef) return;
+        roomRef.child('voz/signals/answer').set({
+            fromSeat: miSeat,
+            sdp: answer,
+            ts: Date.now()
+        });
+    },
+
+    escucharRespuestaVoz: (callback) => {
+        if (!roomRef) return;
+        roomRef.child('voz/signals/answer').on('value', (snap) => {
+            if (snap.exists()) callback(snap.val());
+        });
+    },
+
+    enviarCandidatoIceVoz: (candidate) => {
+        if (!roomRef) return;
+        roomRef.child(`voz/signals/candidates_${miSeat}`).push(candidate);
+    },
+
+    escucharCandidatosIceVoz: (remoteSeat, callback) => {
+        if (!roomRef) return;
+        roomRef.child(`voz/signals/candidates_${remoteSeat}`).on('child_added', (snap) => {
+            if (snap.exists()) callback(snap.val());
+        });
+    },
+
+    limpiarSenalesVoz: () => {
+        if (!roomRef) return;
+        roomRef.child('voz/signals').remove().catch(() => {});
+    },
+
     desconectar: () => {
         clearInterval(heartbeatInterval);
         if (roomRef) {

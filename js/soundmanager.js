@@ -158,6 +158,20 @@ class SoundManager {
                 osc.stop(t + i * 0.06 + 0.05);
             }
         }
+        else if (type === 'chat-message') {
+            // Suave "pop" cálido de mensaje de chat
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(587.33, t);
+            osc.frequency.exponentialRampToValueAtTime(880, t + 0.08);
+            gain.gain.setValueAtTime(0.18, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.09);
+        }
     }
 }
 

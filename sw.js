@@ -1,6 +1,6 @@
 // sw.js - Service Worker para Conga Uruguaya Offline PWA
 
-const CACHE_NAME = 'conga-uruguaya-v9';
+const CACHE_NAME = 'conga-uruguaya-v10';
 const PRECACHE_ASSETS = [
     './',
     './index.html',
@@ -9,6 +9,7 @@ const PRECACHE_ASSETS = [
     './js/engine/CongaBot.js',
     './js/soundmanager.js',
     './js/firebasemanager.js',
+    './js/chatmanager.js',
     './js/app.js',
     './manifest.json',
     './assets/cards_tatu/carta_reverso.png',

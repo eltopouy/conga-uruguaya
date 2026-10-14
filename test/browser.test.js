@@ -951,6 +951,176 @@ const assert = require('assert');
             await page.close();
         });
 
+        await runTest('Sala de chat se abre y cierra desde botón flotante, barra superior y menú móvil', async () => {
+            const page = await browser.newPage();
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(300);
+
+            // 1. Abrir desde botón flotante
+            await page.click('#floating-chat-btn');
+            await page.waitForTimeout(200);
+            let isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
+            assert.strictEqual(isChatOpen, 'flex', 'El chat drawer debe abrirse con display: flex desde el botón flotante');
+
+            // 2. Cerrar chat con botón ✕
+            await page.click('#btn-close-chat');
+            await page.waitForTimeout(200);
+            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
+            assert.strictEqual(isChatOpen, 'none', 'El chat drawer debe cerrarse al hacer clic en ✕');
+
+            // 3. Abrir desde botón de barra superior (escritorio)
+            await page.click('#btn-chat');
+            await page.waitForTimeout(200);
+            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
+            assert.strictEqual(isChatOpen, 'flex', 'El chat drawer debe abrirse desde el botón de la barra superior');
+            await page.click('#btn-close-chat');
+
+            // 4. Abrir desde menú hamburguesa en vista móvil
+            await page.setViewportSize({ width: 375, height: 667 });
+            await page.waitForTimeout(200);
+            await page.click('#btn-menu-hamburguesa');
+            await page.waitForTimeout(200);
+            await page.click('#h-btn-chat');
+            await page.waitForTimeout(200);
+
+            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
+            assert.strictEqual(isChatOpen, 'flex', 'El chat drawer debe abrirse desde la opción de chat en el menú hamburguesa móvil');
+
+            await page.close();
+        });
+
+        await runTest('Envío de mensajes de texto, reacciones rápidas, bocadillos flotantes y badges no leídos', async () => {
+            const page = await browser.newPage();
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(300);
+
+            // 1. Abrir chat y enviar mensaje de texto
+            await page.click('#floating-chat-btn');
+            await page.waitForTimeout(200);
+
+            await page.fill('#chat-input-field', '¡Buena suerte en la mano!');
+            await page.click('#btn-chat-send');
+            await page.waitForTimeout(200);
+
+            const msgText = await page.innerText('#chat-messages-container');
+            assert(msgText.includes('¡Buena suerte en la mano!'), 'El mensaje enviado debe aparecer en el historial del chat');
+
+            // 2. Enviar reacción rápida con 1 tap
+            await page.click('.quick-reaction-btn:first-child');
+            await page.waitForTimeout(200);
+            const historyWithReaction = await page.innerText('#chat-messages-container');
+            assert(historyWithReaction.includes('Buena jugada'), 'La reacción rápida debe agregarse al historial');
+
+            // 3. Cerrar chat y simular mensaje entrante de rival
+            await page.click('#btn-close-chat');
+            await page.waitForTimeout(200);
+
+            await page.evaluate(() => {
+                window.ChatManager.recibirMensaje({
+                    id: 'test_rival_msg_1',
+                    seat: 1,
+                    nombre: 'Tatú',
+                    texto: '¡Ojo con ese descarte compadre!',
+                    tipo: 'texto',
+                    ts: Date.now()
+                });
+            });
+            await page.waitForTimeout(200);
+
+            // Badge de no leídos debe mostrar 1
+            const badgeText = await page.innerText('#chat-unread-badge');
+            assert.strictEqual(badgeText, '1', 'El badge de mensajes no leídos debe marcar 1');
+
+            // Debe aparecer el bocadillo flotante en la mesa
+            const bubbleEl = await page.$('.speech-bubble-pop');
+            assert.ok(bubbleEl, 'Debe aparecer un bocadillo flotante de chat en la mesa cuando el chat está cerrado');
+            const bubbleText = await page.innerText('.speech-bubble-pop');
+            assert(bubbleText.includes('Ojo con ese descarte'), 'El bocadillo flotante debe contener el mensaje del rival');
+
+            // Al abrir el chat, el badge debe limpiarse
+            await page.click('#floating-chat-btn');
+            await page.waitForTimeout(200);
+            const badgeDisplayAfter = await page.evaluate(() => document.getElementById('chat-unread-badge').style.display);
+            assert.strictEqual(badgeDisplayAfter, 'none', 'El badge de no leídos debe desaparecer al abrir el chat');
+
+            await page.close();
+        });
+
+        await runTest('Controles de llamada de voz WebRTC (unirse, silenciar mic, silenciar altavoz y colgar)', async () => {
+            const page = await browser.newPage();
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(300);
+
+            // Mockear getUserMedia para el entorno headless sin hardware físico de micrófono
+            await page.evaluate(() => {
+                if (!navigator.mediaDevices) navigator.mediaDevices = {};
+                navigator.mediaDevices.getUserMedia = async () => {
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = ctx.createOscillator();
+                    const dst = ctx.createMediaStreamDestination();
+                    osc.connect(dst);
+                    osc.start();
+                    return dst.stream;
+                };
+            });
+
+            // 1. Abrir chat y unirse a la llamada de voz
+            await page.click('#floating-chat-btn');
+            await page.waitForTimeout(200);
+
+            await page.click('#btn-voice-join');
+            await page.waitForTimeout(300);
+
+            const voiceStatus = await page.innerText('#voice-status-text');
+            assert(voiceStatus.includes('🟢'), `El estado de voz debe indicar conexión activa, recibido: "${voiceStatus}"`);
+
+            // Botones de acción deben estar visibles
+            const btnMuteDisplay = await page.evaluate(() => document.getElementById('btn-voice-mute').style.display);
+            assert.notStrictEqual(btnMuteDisplay, 'none', 'El botón de silenciar micrófono debe estar visible en llamada');
+
+            const btnDeafenDisplay = await page.evaluate(() => document.getElementById('btn-voice-deafen').style.display);
+            assert.notStrictEqual(btnDeafenDisplay, 'none', 'El botón de silenciar altavoz debe estar visible en llamada');
+
+            const btnHangupDisplay = await page.evaluate(() => document.getElementById('btn-voice-hangup').style.display);
+            assert.notStrictEqual(btnHangupDisplay, 'none', 'El botón de colgar debe estar visible en llamada');
+
+            // 2. Silenciar micrófono
+            await page.click('#btn-voice-mute');
+            await page.waitForTimeout(150);
+            let muteText = await page.innerText('#btn-voice-mute');
+            assert.strictEqual(muteText, '🔇', 'El icono del botón debe cambiar a micrófono silenciado');
+
+            // Desilenciar micrófono
+            await page.click('#btn-voice-mute');
+            await page.waitForTimeout(150);
+            muteText = await page.innerText('#btn-voice-mute');
+            assert.strictEqual(muteText, '🎙️', 'El icono del botón debe volver a micrófono activo');
+
+            // 3. Silenciar altavoz (deafen)
+            await page.click('#btn-voice-deafen');
+            await page.waitForTimeout(150);
+            let deafenText = await page.innerText('#btn-voice-deafen');
+            assert.strictEqual(deafenText, '🔈', 'El icono debe indicar altavoz silenciado');
+
+            // 4. Colgar llamada
+            await page.click('#btn-voice-hangup');
+            await page.waitForTimeout(200);
+
+            const voiceStatusAfter = await page.innerText('#voice-status-text');
+            assert(voiceStatusAfter.includes('desconectada'), 'El estado debe volver a llamada desconectada');
+
+            const joinDisplayAfter = await page.evaluate(() => document.getElementById('btn-voice-join').style.display);
+            assert.notStrictEqual(joinDisplayAfter, 'none', 'El botón de unirse a llamada debe volver a estar disponible');
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }
