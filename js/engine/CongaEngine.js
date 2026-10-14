@@ -237,6 +237,9 @@ class CongaEngine {
         if (this.discardPile.length === 0) return null;
 
         const carta = this.discardPile.pop();
+        if (carta && carta.id) {
+            this.discardPile = this.discardPile.filter(c => c && c.id !== carta.id);
+        }
         this.players[seat].hand.push(carta);
         this.cartaRobada = carta;
         this.origenRobo = 'pozo';

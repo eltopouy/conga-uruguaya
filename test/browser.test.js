@@ -737,6 +737,220 @@ const assert = require('assert');
             await page.close();
         });
 
+        await runTest('Menú hamburguesa en vista móvil agrupa opciones y se sincroniza con estado de juego', async () => {
+            const page = await browser.newPage();
+            await page.setViewportSize({ width: 375, height: 667 });
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+
+            // 1. Iniciar partida para entrar a la mesa
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(300);
+
+            // 2. En móvil, las acciones de escritorio están ocultas y el menú hamburguesa es visible
+            const desktopDisplay = await page.evaluate(() => window.getComputedStyle(document.getElementById('desktop-top-actions')).display);
+            assert.strictEqual(desktopDisplay, 'none', 'Los botones de escritorio deben estar ocultos en móvil');
+
+            const hamburgerDisplay = await page.evaluate(() => window.getComputedStyle(document.getElementById('mobile-menu-container')).display);
+            assert.notStrictEqual(hamburgerDisplay, 'none', 'El contenedor del menú hamburguesa debe ser visible en móvil');
+
+            // 3. Abrir menú hamburguesa
+            await page.click('#btn-menu-hamburguesa');
+            await page.waitForTimeout(200);
+            const dropdownDisplay = await page.evaluate(() => document.getElementById('dropdown-menu-hamburguesa').style.display);
+            assert.strictEqual(dropdownDisplay, 'flex', 'El dropdown del menú debe abrirse con display: flex');
+
+            // Durante la partida, el botón Salir del dropdown está visible
+            const salirPartidaDisplay = await page.evaluate(() => document.getElementById('h-btn-salir').style.display);
+            assert.strictEqual(salirPartidaDisplay, 'flex', 'El botón salir debe estar visible durante la partida');
+
+            // 4. Probar opción Reglamento desde el menú móvil
+            await page.click('#h-btn-reglamento');
+            await page.waitForTimeout(200);
+            const modalReglas = await page.evaluate(() => document.getElementById('modal-reglamento').style.display);
+            assert.strictEqual(modalReglas, 'flex', 'El modal de reglamento debe abrirse desde el menú hamburguesa');
+            await page.click('#modal-reglamento .modal-close-btn');
+            await page.waitForTimeout(200);
+
+            // 5. Salir al lobby desde el menú móvil
+            await page.click('#btn-menu-hamburguesa');
+            await page.waitForTimeout(200);
+            await page.click('#h-btn-salir');
+            await page.waitForTimeout(300);
+
+            const startScreenDisplay = await page.evaluate(() => document.getElementById('start-screen').style.display);
+            assert.strictEqual(startScreenDisplay, 'flex', 'Al pulsar salir desde el menú móvil debe volver a la pantalla de inicio');
+
+            await page.close();
+        });
+
+        await runTest('Leyenda de turno en descarte solo incluye "o cortar" si se cumplen las condiciones para cortar', async () => {
+            const page = await browser.newPage();
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(300);
+
+            // Mano que NO puede cortar (altos puntos sueltos sin juegos suficientes)
+            await page.evaluate(() => {
+                const engine = window.engine;
+                engine.fase = 'descartar';
+                engine.turnoSeat = 0;
+                engine.discardPile = [{ valor: 1, palo: 'Basto', esComodin: false, id: 'disc_1' }];
+                engine.players[0].hand = [
+                    new window.Carta(1, 'Espada', false, 't1'),
+                    new window.Carta(4, 'Oro', false, 't2'),
+                    new window.Carta(7, 'Copa', false, 't3'),
+                    new window.Carta(10, 'Basto', false, 't4'),
+                    new window.Carta(11, 'Espada', false, 't5'),
+                    new window.Carta(12, 'Oro', false, 't6'),
+                    new window.Carta(3, 'Copa', false, 't7'),
+                    new window.Carta(8, 'Basto', false, 't8')
+                ];
+                window.renderJuego();
+            });
+            await page.waitForTimeout(200);
+
+            let turnText = await page.innerText('#turn-text');
+            assert(turnText.includes('descartar'), 'Debe indicar que seleccione una carta para descartar');
+            assert(!turnText.includes('cortar'), `NO debe mencionar cortar si el jugador no puede cortar, recibido: "${turnText}"`);
+
+            // Mano que SÍ puede cortar (escalera 4,5,6 y trío 1,1,1 + carta descarte)
+            await page.evaluate(() => {
+                const engine = window.engine;
+                engine.players[0].hand = [
+                    new window.Carta(4, 'Espada', false, 'c1'),
+                    new window.Carta(5, 'Espada', false, 'c2'),
+                    new window.Carta(6, 'Espada', false, 'c3'),
+                    new window.Carta(1, 'Oro', false, 'c4'),
+                    new window.Carta(1, 'Copa', false, 'c5'),
+                    new window.Carta(1, 'Basto', false, 'c6'),
+                    new window.Carta(2, 'Oro', false, 'c7'),
+                    new window.Carta(12, 'Basto', false, 'c8') // Al descartar esta, queda en 2 pts (<= 5)
+                ];
+                window.renderJuego();
+            });
+            await page.waitForTimeout(200);
+
+            turnText = await page.innerText('#turn-text');
+            assert(turnText.includes('cortar'), `Debe mencionar cortar cuando puede cortar, recibido: "${turnText}"`);
+
+            await page.close();
+        });
+
+        await runTest('Arrastre de carta hacia el pozo activa highlight y descarta la carta de forma fiable', async () => {
+            const page = await browser.newPage();
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(300);
+
+            // Preparar turno de descarte del jugador 0 con 8 cartas y pozo con 1 carta
+            await page.evaluate(() => {
+                const engine = window.engine;
+                engine.turnoSeat = 0;
+                engine.fase = 'descartar';
+                engine.discardPile = [{ valor: 10, palo: 'Copa', esComodin: false, id: 'pozo_inicial' }];
+                window.renderJuego();
+            });
+            await page.waitForTimeout(200);
+
+            const cardHandle = await page.$('.hand-card:first-child');
+            assert(cardHandle, 'Debe existir la primera carta en mano');
+            const cardBox = await cardHandle.boundingBox();
+
+            const discardHandle = await page.$('#discard-pile-container');
+            assert(discardHandle, 'Debe existir el pozo de descarte');
+            const discardBox = await discardHandle.boundingBox();
+
+            // 1. Mover mouse a la carta y presionar botón principal
+            await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+            await page.mouse.down();
+
+            // 2. Arrastrar hacia arriba a la zona del pozo de descarte
+            await page.mouse.move(discardBox.x + discardBox.width / 2, discardBox.y + discardBox.height / 2, { steps: 5 });
+            await page.waitForTimeout(100);
+
+            // 3. Verificar que el pozo adquirió la clase visual 'highlight-drop-target'
+            const hasHighlight = await page.evaluate(() => {
+                return document.getElementById('discard-pile-container').classList.contains('highlight-drop-target');
+            });
+            assert.strictEqual(hasHighlight, true, 'El pozo debe resaltar con highlight-drop-target durante el arrastre');
+
+            // 4. Soltar el mouse sobre el pozo
+            await page.mouse.up();
+            await page.waitForTimeout(300);
+
+            // 5. Verificar que el descarte se ejecutó exitosamente: mano pasa de 8 a 7 cartas
+            const handCount = await page.evaluate(() => window.engine.players[0].hand.length);
+            assert.strictEqual(handCount, 7, 'La mano debe tener 7 cartas tras el descarte por arrastre');
+
+            // La clase highlight debe haberse removido tras el drop
+            const highlightCleared = await page.evaluate(() => {
+                return !document.getElementById('discard-pile-container').classList.contains('highlight-drop-target');
+            });
+            assert.strictEqual(highlightCleared, true, 'La clase highlight-drop-target debe limpiarse al soltar');
+
+            await page.close();
+        });
+
+        await runTest('Sincronización remota online previene duplicación de carta al robar del pozo', async () => {
+            const page = await browser.newPage();
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+
+            // Simular recepción de estado remoto donde el jugador 0 robó la única carta del pozo
+            // En Firebase, discardPile queda vacío y por tanto undefined en el payload JSON
+            await page.evaluate(() => {
+                const cartaRobadaPozo = { valor: 5, palo: 'Espada', esComodin: false, id: 'c_espada_5' };
+                window.aplicarEstadoJuegoRemoto({
+                    rondaActual: 1,
+                    turnoSeat: 0,
+                    fase: 'descartar',
+                    deckCount: 34,
+                    // discardPile omitido intencionalmente simulando eliminación de array vacío por Firebase
+                    players: [
+                        {
+                            seat: 0,
+                            name: 'Jugador_1',
+                            puntosAcumulados: 0,
+                            hand: [
+                                { valor: 1, palo: 'Oro', id: 'c1' },
+                                { valor: 2, palo: 'Oro', id: 'c2' },
+                                { valor: 3, palo: 'Oro', id: 'c3' },
+                                { valor: 4, palo: 'Oro', id: 'c4' },
+                                { valor: 5, palo: 'Oro', id: 'c5' },
+                                { valor: 6, palo: 'Oro', id: 'c6' },
+                                { valor: 7, palo: 'Oro', id: 'c7' },
+                                cartaRobadaPozo // 8va carta recién robada del pozo
+                            ]
+                        },
+                        {
+                            seat: 1,
+                            name: 'Rival_2',
+                            puntosAcumulados: 0,
+                            hand: [{},{},{},{},{},{},{}]
+                        }
+                    ]
+                });
+            });
+            await page.waitForTimeout(200);
+
+            const checkResult = await page.evaluate(() => {
+                const eng = window.engine;
+                const pozoLen = eng.discardPile.length;
+                const hasPozoCardInHand = eng.players[0].hand.some(c => c.id === 'c_espada_5');
+                const hasHandCardInPozo = eng.discardPile.some(c => c.id === 'c_espada_5');
+                return { pozoLen, hasPozoCardInHand, hasHandCardInPozo };
+            });
+
+            assert.strictEqual(checkResult.pozoLen, 0, 'El pozo debe quedar vacío cuando no vienen cartas');
+            assert.strictEqual(checkResult.hasPozoCardInHand, true, 'La carta debe estar en la mano del jugador');
+            assert.strictEqual(checkResult.hasHandCardInPozo, false, 'La carta NUNCA debe estar duplicada en el pozo');
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }

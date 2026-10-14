@@ -23,12 +23,24 @@
                 <span>CONGA URUGUAYA</span>
                 <span id="room-code-tag" style="display:none; font-size:0.75rem; background:#b7950b; color:#000; padding:2px 6px; border-radius:4px; font-weight:bold;"></span>
             </div>
-            <div class="top-actions">
+            <div class="top-actions" id="desktop-top-actions">
                 <button id="btn-marcador" class="btn-icon" title="Ver Marcador">📊 Marcador</button>
                 <button id="btn-guia" class="btn-icon" title="Combinaciones">🎴 Juegos</button>
                 <button id="btn-reglamento" class="btn-icon" title="Reglas">📖 Reglas</button>
                 <button id="btn-config" class="btn-icon" title="Configuración">⚙️</button>
                 <button id="btn-salir" class="btn-icon" title="Salir al Lobby" style="display:none; background:#c0392b;">🚪</button>
+            </div>
+
+            <!-- Menú Hamburguesa para Móvil -->
+            <div id="mobile-menu-container">
+                <button id="btn-menu-hamburguesa" class="btn-icon btn-hamburger" title="Menú de Opciones" aria-label="Abrir menú">☰</button>
+                <div id="dropdown-menu-hamburguesa" class="hamburger-dropdown" style="display:none;">
+                    <button class="hamburger-item" id="h-btn-marcador">📊 Marcador</button>
+                    <button class="hamburger-item" id="h-btn-guia">🎴 Guía de Juegos</button>
+                    <button class="hamburger-item" id="h-btn-reglamento">📖 Reglamento</button>
+                    <button class="hamburger-item" id="h-btn-config">⚙️ Configuración</button>
+                    <button class="hamburger-item" id="h-btn-salir" style="display:none; color:#e74c3c; border-top:1px solid rgba(255,255,255,0.15);">🚪 Salir al Lobby</button>
+                </div>
             </div>
         </header>
 

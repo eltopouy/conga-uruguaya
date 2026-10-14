@@ -152,8 +152,7 @@ window.iniciarSolo = function(numJugadores = 2) {
     const startScreen = document.getElementById('start-screen');
     if (startScreen) startScreen.style.display = 'none';
 
-    const btnSalir = document.getElementById('btn-salir');
-    if (btnSalir) btnSalir.style.display = 'block';
+    actualizarVisibilidadSalir(true);
 
     engine.configurarPartida(numJugadores);
     playSound('shuffle');
@@ -163,6 +162,13 @@ window.iniciarSolo = function(numJugadores = 2) {
     // Si el primer turno le corresponde a un bot
     verificarTurnoBot();
 };
+
+function actualizarVisibilidadSalir(mostrar) {
+    const btnSalir = document.getElementById('btn-salir');
+    if (btnSalir) btnSalir.style.display = mostrar ? 'block' : 'none';
+    const hBtnSalir = document.getElementById('h-btn-salir');
+    if (hBtnSalir) hBtnSalir.style.display = mostrar ? 'flex' : 'none';
+}
 
 function salirAlLobby() {
     if (modoJuego === 'multiplayer' && window.FirebaseManager) {
@@ -176,7 +182,7 @@ function salirAlLobby() {
     miSeat = 0;
     miRol = 'creador';
     document.getElementById('start-screen').style.display = 'flex';
-    document.getElementById('btn-salir').style.display = 'none';
+    actualizarVisibilidadSalir(false);
     document.getElementById('room-code-tag').style.display = 'none';
     document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
 }
@@ -667,9 +673,14 @@ function renderJuego() {
                         ? "Tu turno: Robá del mazo o del pozo"
                         : "Tu turno: Robá del mazo";
                 } else if (engine.fase === 'descartar') {
-                    turnText.innerText = (engine.discardPile.length === 0)
-                        ? "Sos mano: Tienes 8 cartas. Selecciona una carta para tirar al pozo e iniciar la partida"
-                        : "Tu turno: Selecciona una carta para descartar o cortar";
+                    if (engine.discardPile.length === 0) {
+                        turnText.innerText = "Sos mano: Tienes 8 cartas. Selecciona una carta para tirar al pozo e iniciar la partida";
+                    } else {
+                        const puedeCortarAlguna = myPlayer && myPlayer.hand && myPlayer.hand.some((_, i) => engine.puedeCortar(miSeat, i));
+                        turnText.innerText = puedeCortarAlguna
+                            ? "Tu turno: Selecciona una carta para descartar o cortar"
+                            : "Tu turno: Selecciona una carta para descartar";
+                    }
                 }
             } else {
                 banner.classList.remove('my-turn');
@@ -1032,42 +1043,73 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
         if (isDragging) {
             cardDOM.style.transform = `translate3d(${dx}px, ${dy - 14}px, 0) scale(1.12) rotate(${dx * 0.04}deg)`;
 
-            const currentCenterX = (slotCenters[index] || 0) + dx;
-            let nearestSlot = index;
-            let minDiff = Infinity;
-            slotCenters.forEach((centerX, sIdx) => {
-                const diff = Math.abs(currentCenterX - centerX);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    nearestSlot = sIdx;
+            const discardEl = document.getElementById('discard-pile-container');
+            let isOverDiscard = false;
+            if (discardEl) {
+                const rect = discardEl.getBoundingClientRect();
+                isOverDiscard = (
+                    e.clientX >= rect.left - 40 &&
+                    e.clientX <= rect.right + 40 &&
+                    e.clientY >= rect.top - 40 &&
+                    e.clientY <= rect.bottom + 40
+                );
+            }
+            const isDiscardGesture = (isOverDiscard || dy < -65) && (engine.turnoSeat === miSeat && engine.fase === 'descartar');
+
+            if (discardEl) {
+                if (isDiscardGesture) {
+                    discardEl.classList.add('highlight-drop-target');
+                } else {
+                    discardEl.classList.remove('highlight-drop-target');
                 }
-            });
+            }
 
-            if (nearestSlot !== currentSlotIndex) {
-                currentSlotIndex = nearestSlot;
+            if (!isDiscardGesture) {
+                const currentCenterX = (slotCenters[index] || 0) + dx;
+                let nearestSlot = index;
+                let minDiff = Infinity;
+                slotCenters.forEach((centerX, sIdx) => {
+                    const diff = Math.abs(currentCenterX - centerX);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        nearestSlot = sIdx;
+                    }
+                });
 
+                if (nearestSlot !== currentSlotIndex) {
+                    currentSlotIndex = nearestSlot;
+
+                    siblingCards.forEach((sibling, sIdx) => {
+                        if (sIdx === index) return;
+
+                        const baseAngle = (sIdx - (totalCards - 1) / 2) * 4;
+                        const baseYOffset = Math.abs(sIdx - (totalCards - 1) / 2) * 3;
+                        sibling.style.transition = 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1)';
+
+                        if (index < currentSlotIndex) {
+                            if (sIdx > index && sIdx <= currentSlotIndex) {
+                                sibling.style.transform = `translateX(-${shiftAmount}px) rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                            } else {
+                                sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                            }
+                        } else if (index > currentSlotIndex) {
+                            if (sIdx >= currentSlotIndex && sIdx < index) {
+                                sibling.style.transform = `translateX(${shiftAmount}px) rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                            } else {
+                                sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                            }
+                        } else {
+                            sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
+                        }
+                    });
+                }
+            } else {
+                // Durante el gesto de descarte hacia el pozo, mantener las otras cartas de la mano sin desplazar
                 siblingCards.forEach((sibling, sIdx) => {
                     if (sIdx === index) return;
-
                     const baseAngle = (sIdx - (totalCards - 1) / 2) * 4;
                     const baseYOffset = Math.abs(sIdx - (totalCards - 1) / 2) * 3;
-                    sibling.style.transition = 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1)';
-
-                    if (index < currentSlotIndex) {
-                        if (sIdx > index && sIdx <= currentSlotIndex) {
-                            sibling.style.transform = `translateX(-${shiftAmount}px) rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
-                        } else {
-                            sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
-                        }
-                    } else if (index > currentSlotIndex) {
-                        if (sIdx >= currentSlotIndex && sIdx < index) {
-                            sibling.style.transform = `translateX(${shiftAmount}px) rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
-                        } else {
-                            sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
-                        }
-                    } else {
-                        sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
-                    }
+                    sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
                 });
             }
         }
@@ -1081,6 +1123,9 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
         } catch (_) {}
         activePointerId = null;
 
+        const discardEl = document.getElementById('discard-pile-container');
+        if (discardEl) discardEl.classList.remove('highlight-drop-target');
+
         if (isDragging) {
             const dy = e.clientY - startY;
             cardDOM.classList.remove('is-dragging');
@@ -1091,8 +1136,23 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
                 s.style.transition = '';
             });
 
-            if (currentSlotIndex !== index && currentSlotIndex >= 0 && currentSlotIndex < hand.length) {
-                // Reordenar las cartas en la mano del jugador
+            let droppedOverDiscard = false;
+            if (discardEl) {
+                const rect = discardEl.getBoundingClientRect();
+                droppedOverDiscard = (
+                    e.clientX >= rect.left - 40 &&
+                    e.clientX <= rect.right + 40 &&
+                    e.clientY >= rect.top - 40 &&
+                    e.clientY <= rect.bottom + 40
+                );
+            }
+
+            // Prioridad 1: Descarte por arrastre al pozo o hacia arriba a la mesa
+            if (engine.turnoSeat === miSeat && engine.fase === 'descartar' && (droppedOverDiscard || dy < -60)) {
+                selectedCardIndex = index;
+                ejecutarDescarteHumano();
+            } else if (currentSlotIndex !== index && currentSlotIndex >= 0 && currentSlotIndex < hand.length) {
+                // Prioridad 2: Reordenar las cartas en la mano del jugador
                 const [movedCard] = hand.splice(index, 1);
                 hand.splice(currentSlotIndex, 0, movedCard);
 
@@ -1109,10 +1169,6 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
 
                 playSound('card-deal');
                 renderJuego();
-            } else if (dy < -80 && engine.turnoSeat === miSeat && engine.fase === 'descartar') {
-                // Descarte rápido por arrastre vertical hacia arriba a la mesa
-                selectedCardIndex = index;
-                ejecutarDescarteHumano();
             } else {
                 renderJuego();
             }
@@ -1636,6 +1692,85 @@ document.getElementById('btn-config').addEventListener('click', () => abrirModal
 document.getElementById('btn-guardar-config').addEventListener('click', guardarConfigLocal);
 document.getElementById('btn-salir').addEventListener('click', salirAlLobby);
 
+// -------------------------------------------------------------
+// MENÚ HAMBURGUESA PARA MÓVIL
+// -------------------------------------------------------------
+const btnMenuHamburguesa = document.getElementById('btn-menu-hamburguesa');
+const dropdownMenuHamburguesa = document.getElementById('dropdown-menu-hamburguesa');
+
+function toggleMenuHamburguesa() {
+    if (!dropdownMenuHamburguesa) return;
+    const isVisible = dropdownMenuHamburguesa.style.display === 'flex';
+    if (isVisible) {
+        dropdownMenuHamburguesa.style.display = 'none';
+    } else {
+        dropdownMenuHamburguesa.style.display = 'flex';
+        const btnSalir = document.getElementById('btn-salir');
+        const hBtnSalir = document.getElementById('h-btn-salir');
+        if (hBtnSalir && btnSalir) {
+            hBtnSalir.style.display = (btnSalir.style.display === 'none') ? 'none' : 'flex';
+        }
+    }
+}
+
+function cerrarMenuHamburguesa() {
+    if (dropdownMenuHamburguesa) dropdownMenuHamburguesa.style.display = 'none';
+}
+
+if (btnMenuHamburguesa) {
+    btnMenuHamburguesa.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMenuHamburguesa();
+    });
+}
+
+document.addEventListener('click', (e) => {
+    const container = document.getElementById('mobile-menu-container');
+    if (container && !container.contains(e.target)) {
+        cerrarMenuHamburguesa();
+    }
+});
+
+const hBtnMarcador = document.getElementById('h-btn-marcador');
+if (hBtnMarcador) {
+    hBtnMarcador.addEventListener('click', () => {
+        cerrarMenuHamburguesa();
+        document.getElementById('btn-marcador').click();
+    });
+}
+
+const hBtnGuia = document.getElementById('h-btn-guia');
+if (hBtnGuia) {
+    hBtnGuia.addEventListener('click', () => {
+        cerrarMenuHamburguesa();
+        document.getElementById('btn-guia').click();
+    });
+}
+
+const hBtnReglamento = document.getElementById('h-btn-reglamento');
+if (hBtnReglamento) {
+    hBtnReglamento.addEventListener('click', () => {
+        cerrarMenuHamburguesa();
+        document.getElementById('btn-reglamento').click();
+    });
+}
+
+const hBtnConfig = document.getElementById('h-btn-config');
+if (hBtnConfig) {
+    hBtnConfig.addEventListener('click', () => {
+        cerrarMenuHamburguesa();
+        document.getElementById('btn-config').click();
+    });
+}
+
+const hBtnSalir = document.getElementById('h-btn-salir');
+if (hBtnSalir) {
+    hBtnSalir.addEventListener('click', () => {
+        cerrarMenuHamburguesa();
+        document.getElementById('btn-salir').click();
+    });
+}
+
 // Marcador
 document.getElementById('btn-marcador').addEventListener('click', () => {
     const tbody = document.getElementById('marcador-tbody');
@@ -1765,6 +1900,8 @@ function aplicarEstadoJuegoRemoto(estadoJuego) {
     // Pozo de descarte
     if (Array.isArray(estadoJuego.discardPile)) {
         engine.discardPile = estadoJuego.discardPile.map(c => new Carta(c.valor, c.palo, c.esComodin, c.id));
+    } else {
+        engine.discardPile = [];
     }
 
     // Representación visual del mazo
@@ -1786,6 +1923,19 @@ function aplicarEstadoJuegoRemoto(estadoJuego) {
             p.unmelded = (pData.unmelded || []).map(c => new Carta(c.valor, c.palo, c.esComodin, c.id));
             return p;
         });
+    }
+
+    // Garantizar invariante estricta: ninguna carta en mano de jugador puede estar en el pozo
+    const idCartasEnManos = new Set();
+    if (Array.isArray(engine.players)) {
+        engine.players.forEach(p => {
+            if (p && Array.isArray(p.hand)) {
+                p.hand.forEach(c => { if (c && c.id) idCartasEnManos.add(c.id); });
+            }
+        });
+    }
+    if (Array.isArray(engine.discardPile) && engine.discardPile.length > 0) {
+        engine.discardPile = engine.discardPile.filter(c => c && !idCartasEnManos.has(c.id));
     }
 
     // Modal de fin de ronda
@@ -1877,7 +2027,7 @@ document.getElementById('btn-host-iniciar').addEventListener('click', async () =
     miRol = 'creador';
     cerrarModal('modal-sala');
     document.getElementById('start-screen').style.display = 'none';
-    document.getElementById('btn-salir').style.display = 'block';
+    actualizarVisibilidadSalir(true);
 
     await window.FirebaseManager.iniciarPartidaOnline(engine);
     renderJuego();
@@ -1954,7 +2104,7 @@ document.getElementById('btn-confirmar-unirse').addEventListener('click', async 
             if (sala.estado === 'jugando' && sala.estadoJuego) {
                 cerrarModal('modal-sala');
                 document.getElementById('start-screen').style.display = 'none';
-                document.getElementById('btn-salir').style.display = 'block';
+                actualizarVisibilidadSalir(true);
                 aplicarEstadoJuegoRemoto(sala.estadoJuego);
             } else if (sala.estado === 'finalizado') {
                 alert("La sala fue cerrada por el anfitrión.");

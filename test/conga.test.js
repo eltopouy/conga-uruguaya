@@ -690,6 +690,87 @@ test('colocarCarta mantiene los melds ordenados secuencialmente', () => {
     assert.deepStrictEqual(meldValores, [3, 4, 5, 6], 'La escalera colocada debe estar ordenada ascendentemente (3, 4, 5, 6)');
 });
 
+test('robarPozo nunca duplica la carta entre el pozo y la mano del jugador y no permite descarte inmediato', () => {
+    const engine = new CongaEngine();
+    engine.configurarPartida(2);
+    // Vaciar pozo y colocar una carta conocida
+    const cartaPozo = new Carta(7, 'Oro', false, 'test_oro_7');
+    engine.discardPile = [cartaPozo];
+    engine.fase = 'robar';
+    engine.turnoSeat = 0;
+
+    const initialHandLength = engine.players[0].hand.length;
+    const robada = engine.robarPozo(0);
+
+    assert.strictEqual(robada.id, 'test_oro_7');
+    assert.strictEqual(engine.players[0].hand.length, initialHandLength + 1);
+    assert.ok(engine.players[0].hand.some(c => c.id === 'test_oro_7'), 'La carta debe estar en la mano');
+    assert.strictEqual(engine.discardPile.length, 0, 'El pozo debe quedar vacío');
+    assert.ok(!engine.discardPile.some(c => c.id === 'test_oro_7'), 'La carta no debe existir en el pozo');
+    assert.strictEqual(engine.fase, 'descartar');
+
+    // Regla de Conga: no puede tirar la misma carta recién robada del pozo
+    const idxRecienRobada = engine.players[0].hand.findIndex(c => c.id === 'test_oro_7');
+    const descarteFallido = engine.descartarCarta(0, idxRecienRobada);
+    assert.strictEqual(descarteFallido, null, 'No debe permitir descartar la carta recién levantada del pozo');
+});
+
+test('Simulación de partida completa verificando la invariante estricta de unicidad de cartas y fin de partida', () => {
+    const engine = new CongaEngine({ limitePuntos: 30, deckSize: 48, conComodines: false });
+    engine.configurarPartida(2);
+    const bot0 = new CongaBot('Facil');
+    const bot1 = new CongaBot('Facil');
+
+    const TOTAL_CARDS = 48;
+    let turnCount = 0;
+    const MAX_TURNS = 200;
+
+    while (!engine.partidoFinalizado && turnCount < MAX_TURNS) {
+        turnCount++;
+        const currentSeat = engine.turnoSeat;
+        const currentBot = currentSeat === 0 ? bot0 : bot1;
+
+        // Invariante de unicidad y conservación de cartas
+        const allCardIds = [];
+        engine.deck.forEach(c => allCardIds.push(c.id));
+        engine.discardPile.forEach(c => allCardIds.push(c.id));
+        engine.players.forEach(p => p.hand.forEach(c => allCardIds.push(c.id)));
+
+        const idSet = new Set(allCardIds);
+        assert.strictEqual(idSet.size, allCardIds.length, `No debe haber cartas duplicadas en el turno ${turnCount}`);
+        assert.strictEqual(allCardIds.length, TOTAL_CARDS, `La suma de cartas debe ser exactamente ${TOTAL_CARDS}`);
+
+        if (engine.fase === 'robar') {
+            const decision = currentBot.decidirRobo(engine, currentSeat);
+            if (decision === 'pozo' && engine.discardPile.length > 0) {
+                engine.robarPozo(currentSeat);
+            } else {
+                engine.robarMazo(currentSeat);
+            }
+        } else if (engine.fase === 'descartar') {
+            const player = engine.players[currentSeat];
+            let cardIndexToDiscard = 0;
+            if (engine.origenRobo === 'pozo' && engine.cartaRobada) {
+                const safeIdx = player.hand.findIndex(c => c.id !== engine.cartaRobada.id);
+                if (safeIdx !== -1) cardIndexToDiscard = safeIdx;
+            }
+
+            if (engine.puedeCortar(currentSeat, cardIndexToDiscard)) {
+                engine.iniciarCorte(currentSeat, cardIndexToDiscard);
+                engine.finalizarCorte();
+                engine.verificarEliminaciones();
+                if (!engine.partidoFinalizado) {
+                    engine.iniciarRonda();
+                }
+            } else {
+                engine.descartarCarta(currentSeat, cardIndexToDiscard);
+            }
+        }
+    }
+
+    assert.ok(turnCount > 0, 'La partida debe haber ejecutado múltiples turnos sin duplicar cartas');
+});
+
 console.log('\n========================================');
 console.log(`🏁 RESULTADO: ${passedTests}/${totalTests} tests pasados.`);
 console.log('========================================\n');
