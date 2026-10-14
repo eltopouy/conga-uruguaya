@@ -951,52 +951,97 @@ const assert = require('assert');
             await page.close();
         });
 
-        await runTest('Sala de chat se abre y cierra desde botón flotante, barra superior y menú móvil', async () => {
+        await runTest('El botón flotante de chat solo se habilita cuando se elige partida online y los jugadores ya están en la sala', async () => {
             const page = await browser.newPage();
             await page.goto(filePath);
             await page.waitForTimeout(300);
+
+            // 1. En el lobby / inicio: el botón flotante debe estar oculto
+            let floatDisplay = await page.evaluate(() => document.getElementById('floating-chat-btn').style.display);
+            assert.strictEqual(floatDisplay, 'none', 'En el lobby de inicio el botón flotante de chat debe estar oculto');
+
+            // 2. En modo 1v1 contra el bot: debe permanecer oculto
             await page.click('#btn-start-1v1');
-            await page.waitForTimeout(300);
+            await page.waitForTimeout(200);
+            floatDisplay = await page.evaluate(() => document.getElementById('floating-chat-btn').style.display);
+            assert.strictEqual(floatDisplay, 'none', 'En modo 1 vs 1 contra el bot el botón flotante de chat debe estar oculto');
 
-            // 1. Abrir desde botón flotante
-            await page.click('#floating-chat-btn');
-            await page.waitForTimeout(200);
-            let isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
-            assert.strictEqual(isChatOpen, 'flex', 'El chat drawer debe abrirse con display: flex desde el botón flotante');
-
-            // 2. Cerrar chat con botón ✕
-            await page.click('#btn-close-chat');
-            await page.waitForTimeout(200);
-            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
-            assert.strictEqual(isChatOpen, 'none', 'El chat drawer debe cerrarse al hacer clic en ✕');
-
-            // 3. Abrir desde botón de barra superior (escritorio)
-            await page.click('#btn-chat');
-            await page.waitForTimeout(200);
-            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
-            assert.strictEqual(isChatOpen, 'flex', 'El chat drawer debe abrirse desde el botón de la barra superior');
-            await page.click('#btn-close-chat');
-
-            // 4. Abrir desde menú hamburguesa en vista móvil
-            await page.setViewportSize({ width: 375, height: 667 });
-            await page.waitForTimeout(200);
-            await page.click('#btn-menu-hamburguesa');
-            await page.waitForTimeout(200);
-            await page.click('#h-btn-chat');
+            // 3. Salir al lobby
+            await page.click('#btn-salir');
             await page.waitForTimeout(200);
 
-            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
-            assert.strictEqual(isChatOpen, 'flex', 'El chat drawer debe abrirse desde la opción de chat en el menú hamburguesa móvil');
+            // 4. Habilitar cuando hay partida online con jugadores en sala
+            await page.evaluate(() => {
+                window.ChatManager.habilitarChat(true, 'SALA-1234');
+            });
+            floatDisplay = await page.evaluate(() => document.getElementById('floating-chat-btn').style.display);
+            assert.strictEqual(floatDisplay, 'flex', 'Al ingresar a sala online con jugadores el botón flotante debe mostrarse');
+
+            // 5. El puntito inicial debe ser verde (pronto para interactuar)
+            const dotClass = await page.evaluate(() => document.getElementById('chat-status-dot').className);
+            assert(dotClass.includes('dot-verde'), 'El puntito debe ser de color verde cuando está pronto para interactuar');
 
             await page.close();
         });
 
-        await runTest('Envío de mensajes de texto, reacciones rápidas, bocadillos flotantes y badges no leídos', async () => {
-            const page = await browser.newPage();
+        await runTest('Ventana de chat compacta y dinámica con cierre fácil (botón ✕, clic afuera en mesa y Escape)', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.goto(filePath);
             await page.waitForTimeout(300);
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(300);
+
+            // Habilitar chat online
+            await page.evaluate(() => window.ChatManager.habilitarChat(true, 'SALA-TEST'));
+
+            // 1. Abrir desde botón flotante y verificar dimensiones compactas
+            await page.click('#floating-chat-btn');
+            await page.waitForTimeout(200);
+
+            const dimensions = await page.evaluate(() => {
+                const drawer = document.getElementById('chat-drawer');
+                const rect = drawer.getBoundingClientRect();
+                return {
+                    display: drawer.style.display,
+                    width: rect.width,
+                    height: rect.height
+                };
+            });
+            assert.strictEqual(dimensions.display, 'flex', 'El chat drawer debe abrirse con display: flex');
+            assert(dimensions.width <= 330, `El ancho de la ventana debe ser compacto (<= 330px), medido: ${dimensions.width}`);
+            assert(dimensions.height <= 420, `La altura de la ventana debe ser compacta (<= 420px), medido: ${dimensions.height}`);
+
+            // 2. Cerrar haciendo clic afuera (en el centro de la mesa)
+            await page.click('#center-table');
+            await page.waitForTimeout(200);
+            let isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
+            assert.strictEqual(isChatOpen, 'none', 'El chat debe cerrarse fácilmente al hacer clic afuera en la mesa');
+
+            // 3. Abrir nuevamente y cerrar con tecla Escape
+            await page.click('#floating-chat-btn');
+            await page.waitForTimeout(200);
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(200);
+            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
+            assert.strictEqual(isChatOpen, 'none', 'El chat debe cerrarse fácilmente con la tecla Escape');
+
+            // 4. Abrir nuevamente y cerrar con el botón ✕
+            await page.click('#floating-chat-btn');
+            await page.waitForTimeout(200);
+            await page.click('#btn-close-chat');
+            await page.waitForTimeout(200);
+            isChatOpen = await page.evaluate(() => document.getElementById('chat-drawer').style.display);
+            assert.strictEqual(isChatOpen, 'none', 'El chat debe cerrarse con el botón ✕');
+
+            await page.close();
+        });
+
+        await runTest('Envío de mensajes, reacciones y puntito amarillo en el icono cuando hay chats sin leer', async () => {
+            const page = await browser.newPage();
+            await page.goto(filePath);
+            await page.waitForTimeout(300);
+
+            await page.evaluate(() => window.ChatManager.habilitarChat(true, 'SALA-TEST'));
 
             // 1. Abrir chat y enviar mensaje de texto
             await page.click('#floating-chat-btn');
@@ -1023,7 +1068,7 @@ const assert = require('assert');
                 window.ChatManager.recibirMensaje({
                     id: 'test_rival_msg_1',
                     seat: 1,
-                    nombre: 'Tatú',
+                    nombre: 'Rival',
                     texto: '¡Ojo con ese descarte compadre!',
                     tipo: 'texto',
                     ts: Date.now()
@@ -1031,31 +1076,33 @@ const assert = require('assert');
             });
             await page.waitForTimeout(200);
 
+            // El puntito en la esquina superior derecha debe ser AMARILLO
+            const dotClass = await page.evaluate(() => document.getElementById('chat-status-dot').className);
+            assert(dotClass.includes('dot-amarillo'), 'El puntito debe ser amarillo cuando hay chats sin leer');
+
             // Badge de no leídos debe mostrar 1
             const badgeText = await page.innerText('#chat-unread-badge');
             assert.strictEqual(badgeText, '1', 'El badge de mensajes no leídos debe marcar 1');
 
-            // Debe aparecer el bocadillo flotante en la mesa
+            // Bocadillo flotante en mesa
             const bubbleEl = await page.$('.speech-bubble-pop');
             assert.ok(bubbleEl, 'Debe aparecer un bocadillo flotante de chat en la mesa cuando el chat está cerrado');
-            const bubbleText = await page.innerText('.speech-bubble-pop');
-            assert(bubbleText.includes('Ojo con ese descarte'), 'El bocadillo flotante debe contener el mensaje del rival');
 
-            // Al abrir el chat, el badge debe limpiarse
+            // Al abrir el chat, el puntito debe volver a VERDE
             await page.click('#floating-chat-btn');
             await page.waitForTimeout(200);
-            const badgeDisplayAfter = await page.evaluate(() => document.getElementById('chat-unread-badge').style.display);
-            assert.strictEqual(badgeDisplayAfter, 'none', 'El badge de no leídos debe desaparecer al abrir el chat');
+            const dotClassAfter = await page.evaluate(() => document.getElementById('chat-status-dot').className);
+            assert(dotClassAfter.includes('dot-verde'), 'El puntito debe volver a verde al abrir y leer los mensajes');
 
             await page.close();
         });
 
-        await runTest('Controles de llamada de voz WebRTC (unirse, silenciar mic, silenciar altavoz y colgar)', async () => {
+        await runTest('Llamada de voz WebRTC muestra puntito rojo en icono y controles de audio', async () => {
             const page = await browser.newPage();
             await page.goto(filePath);
             await page.waitForTimeout(300);
-            await page.click('#btn-start-1v1');
-            await page.waitForTimeout(300);
+
+            await page.evaluate(() => window.ChatManager.habilitarChat(true, 'SALA-TEST'));
 
             // Mockear getUserMedia para el entorno headless sin hardware físico de micrófono
             await page.evaluate(() => {
@@ -1077,18 +1124,12 @@ const assert = require('assert');
             await page.click('#btn-voice-join');
             await page.waitForTimeout(300);
 
-            const voiceStatus = await page.innerText('#voice-status-text');
-            assert(voiceStatus.includes('🟢'), `El estado de voz debe indicar conexión activa, recibido: "${voiceStatus}"`);
+            // Puntito debe ser ROJO e icono debe ser de llamada
+            const voiceDotClass = await page.evaluate(() => document.getElementById('chat-status-dot').className);
+            assert(voiceDotClass.includes('dot-rojo'), 'El puntito debe ser ROJO cuando se encuentra activa una llamada');
 
-            // Botones de acción deben estar visibles
-            const btnMuteDisplay = await page.evaluate(() => document.getElementById('btn-voice-mute').style.display);
-            assert.notStrictEqual(btnMuteDisplay, 'none', 'El botón de silenciar micrófono debe estar visible en llamada');
-
-            const btnDeafenDisplay = await page.evaluate(() => document.getElementById('btn-voice-deafen').style.display);
-            assert.notStrictEqual(btnDeafenDisplay, 'none', 'El botón de silenciar altavoz debe estar visible en llamada');
-
-            const btnHangupDisplay = await page.evaluate(() => document.getElementById('btn-voice-hangup').style.display);
-            assert.notStrictEqual(btnHangupDisplay, 'none', 'El botón de colgar debe estar visible en llamada');
+            const iconText = await page.innerText('#floating-chat-btn .chat-icon');
+            assert.strictEqual(iconText, '📞', 'El icono del botón flotante debe cambiar a llamada activa');
 
             // 2. Silenciar micrófono
             await page.click('#btn-voice-mute');
@@ -1112,11 +1153,12 @@ const assert = require('assert');
             await page.click('#btn-voice-hangup');
             await page.waitForTimeout(200);
 
-            const voiceStatusAfter = await page.innerText('#voice-status-text');
-            assert(voiceStatusAfter.includes('desconectada'), 'El estado debe volver a llamada desconectada');
+            // El puntito debe volver a VERDE e icono a 💬
+            const dotAfterHangup = await page.evaluate(() => document.getElementById('chat-status-dot').className);
+            assert(dotAfterHangup.includes('dot-verde'), 'El puntito debe volver a VERDE al colgar la llamada');
 
-            const joinDisplayAfter = await page.evaluate(() => document.getElementById('btn-voice-join').style.display);
-            assert.notStrictEqual(joinDisplayAfter, 'none', 'El botón de unirse a llamada debe volver a estar disponible');
+            const iconAfterHangup = await page.innerText('#floating-chat-btn .chat-icon');
+            assert.strictEqual(iconAfterHangup, '💬', 'El icono debe volver a 💬 al colgar la llamada');
 
             await page.close();
         });

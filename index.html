@@ -108,8 +108,9 @@
         <div id="floating-speech-bubbles-container"></div>
 
         <!-- Botón Flotante de Chat y Voz -->
-        <button id="floating-chat-btn" class="floating-chat-trigger" title="Abrir Chat y Llamada de Voz" aria-label="Abrir chat">
+        <button id="floating-chat-btn" class="floating-chat-trigger" title="Abrir Chat y Llamada de Voz" aria-label="Abrir chat" style="display:none;">
             <span class="chat-icon">💬</span>
+            <span id="chat-status-dot" class="chat-status-dot dot-verde" title="Pronto para interactuar"></span>
             <span id="chat-unread-badge" class="chat-unread-badge" style="display:none;">0</span>
             <span id="voice-active-indicator" class="voice-pulse-dot" style="display:none;" title="Llamada de voz activa"></span>
         </button>
@@ -121,7 +122,7 @@
                     <span>💬 Chat y Voz</span>
                     <span id="chat-room-badge" class="chat-room-badge">Sala</span>
                 </div>
-                <button id="btn-close-chat" class="chat-close-btn" title="Cerrar chat">✕</button>
+                <button id="btn-close-chat" class="chat-close-btn" title="Cerrar chat (Esc o clic afuera)" aria-label="Cerrar chat">✕</button>
             </div>
 
             <!-- Barra de Llamada de Voz (WebRTC) -->

@@ -158,7 +158,7 @@ window.iniciarSolo = function(numJugadores = 2) {
     playSound('shuffle');
 
     if (window.ChatManager) {
-        window.ChatManager.conectarSalaOnline(null);
+        window.ChatManager.habilitarChat(false);
     }
 
     renderJuego();
@@ -179,8 +179,7 @@ function salirAlLobby() {
         window.FirebaseManager.desconectar();
     }
     if (window.ChatManager) {
-        window.ChatManager.colgarLlamadaVoz();
-        window.ChatManager.cerrarChat();
+        window.ChatManager.habilitarChat(false);
         window.ChatManager.limpiarMensajes();
     }
     ocultarBotonSiguienteMano();
@@ -2015,14 +2014,16 @@ if (btnConfirmarCrear) {
             document.getElementById('room-code-tag').innerText = res.codigo;
             document.getElementById('room-code-tag').style.display = 'inline-block';
 
-            if (window.ChatManager) {
-                window.ChatManager.conectarSalaOnline(res.codigo);
-            }
-
             window.FirebaseManager.escucharSala((sala) => {
                 const lista = document.getElementById('sala-lista-jugadores');
                 if (lista && sala.jugadores) {
                     lista.innerHTML = sala.jugadores.map(j => `<div style="padding:6px; background:rgba(255,255,255,0.1); border-radius:6px;">👤 ${j.name} (Listo)</div>`).join('');
+                }
+
+                // El chat solo se habilita cuando los jugadores ya están en la sala
+                if (window.ChatManager) {
+                    const enSalaConRivales = (sala.jugadores && sala.jugadores.length >= 2) || (sala.estado === 'jugando');
+                    window.ChatManager.habilitarChat(enSalaConRivales, res.codigo);
                 }
             }, (accion) => {
                 procesarAccionRemota(accion);
@@ -2043,7 +2044,7 @@ document.getElementById('btn-host-iniciar').addEventListener('click', async () =
     actualizarVisibilidadSalir(true);
 
     if (window.ChatManager && window.FirebaseManager) {
-        window.ChatManager.conectarSalaOnline(window.FirebaseManager.getCodigoSala());
+        window.ChatManager.habilitarChat(true, window.FirebaseManager.getCodigoSala());
     }
 
     await window.FirebaseManager.iniciarPartidaOnline(engine);
@@ -2112,14 +2113,15 @@ document.getElementById('btn-confirmar-unirse').addEventListener('click', async 
         document.getElementById('room-code-tag').innerText = code;
         document.getElementById('room-code-tag').style.display = 'inline-block';
 
-        if (window.ChatManager) {
-            window.ChatManager.conectarSalaOnline(code);
-        }
-
         window.FirebaseManager.escucharSala((sala) => {
             const lista = document.getElementById('sala-lista-jugadores');
             if (lista && sala.jugadores) {
                 lista.innerHTML = sala.jugadores.map(j => `<div style="padding:6px; background:rgba(255,255,255,0.1); border-radius:6px;">👤 ${j.name} (Listo)</div>`).join('');
+            }
+
+            if (window.ChatManager) {
+                const enSalaConRivales = (sala.jugadores && sala.jugadores.length >= 2) || (sala.estado === 'jugando');
+                window.ChatManager.habilitarChat(enSalaConRivales, code);
             }
 
             if (sala.estado === 'jugando' && sala.estadoJuego) {
@@ -2127,7 +2129,7 @@ document.getElementById('btn-confirmar-unirse').addEventListener('click', async 
                 document.getElementById('start-screen').style.display = 'none';
                 actualizarVisibilidadSalir(true);
                 if (window.ChatManager) {
-                    window.ChatManager.conectarSalaOnline(code);
+                    window.ChatManager.habilitarChat(true, code);
                 }
                 aplicarEstadoJuegoRemoto(sala.estadoJuego);
             } else if (sala.estado === 'finalizado') {

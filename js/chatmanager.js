@@ -9,6 +9,7 @@
             this.messages = [];
             this.listenersAttached = false;
             this.chatSubscriptionActive = false;
+            this.habilitado = false;
 
             // Estado de Voz (WebRTC)
             this.voice = {
@@ -83,6 +84,7 @@
         init() {
             this._setupDOMListeners();
             this._setupAudioPlayback();
+            this.habilitarChat(false);
         }
 
         _setupAudioPlayback() {
@@ -104,19 +106,26 @@
             // Botón flotante de chat
             const floatBtn = document.getElementById('floating-chat-btn');
             if (floatBtn) {
-                floatBtn.addEventListener('click', () => this.toggleChat());
+                floatBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleChat();
+                });
             }
 
             // Botón de chat en barra superior de escritorio
             const topChatBtn = document.getElementById('btn-chat');
             if (topChatBtn) {
-                topChatBtn.addEventListener('click', () => this.toggleChat());
+                topChatBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleChat();
+                });
             }
 
             // Botón de chat en menú móvil
             const hChatBtn = document.getElementById('h-btn-chat');
             if (hChatBtn) {
-                hChatBtn.addEventListener('click', () => {
+                hChatBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
                     if (window.cerrarMenuHamburguesa) window.cerrarMenuHamburguesa();
                     this.toggleChat();
                 });
@@ -125,8 +134,34 @@
             // Botón cerrar chat
             const closeBtn = document.getElementById('btn-close-chat');
             if (closeBtn) {
-                closeBtn.addEventListener('click', () => this.cerrarChat());
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.cerrarChat();
+                });
             }
+
+            // Cerrar chat fácilmente haciendo clic afuera o tocando en cualquier parte de la mesa
+            document.addEventListener('pointerdown', (e) => {
+                if (!this.isOpen) return;
+                const drawer = document.getElementById('chat-drawer');
+                const floatBtn = document.getElementById('floating-chat-btn');
+                const topBtn = document.getElementById('btn-chat');
+                const hBtn = document.getElementById('h-btn-chat');
+
+                if (drawer && !drawer.contains(e.target) &&
+                    (!floatBtn || !floatBtn.contains(e.target)) &&
+                    (!topBtn || !topBtn.contains(e.target)) &&
+                    (!hBtn || !hBtn.contains(e.target))) {
+                    this.cerrarChat();
+                }
+            });
+
+            // Cerrar chat con la tecla Escape
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && this.isOpen) {
+                    this.cerrarChat();
+                }
+            });
 
             // Formulario de envío de texto
             const form = document.getElementById('chat-input-form');
@@ -171,12 +206,42 @@
             }
         }
 
+        habilitarChat(habilitado, codigoSala = null) {
+            this.habilitado = !!habilitado;
+
+            const floatBtn = document.getElementById('floating-chat-btn');
+            const topBtn = document.getElementById('btn-chat');
+            const hBtn = document.getElementById('h-btn-chat');
+
+            if (this.habilitado) {
+                if (floatBtn) floatBtn.style.display = 'flex';
+                if (topBtn) topBtn.style.display = 'block';
+                if (hBtn) hBtn.style.display = 'flex';
+
+                if (codigoSala && !this.chatSubscriptionActive) {
+                    this.conectarSalaOnline(codigoSala);
+                } else {
+                    this._actualizarIndicadorEstado();
+                }
+            } else {
+                if (floatBtn) floatBtn.style.display = 'none';
+                if (topBtn) topBtn.style.display = 'none';
+                if (hBtn) hBtn.style.display = 'none';
+
+                if (this.isOpen) this.cerrarChat();
+                if (this.voice.active) this.colgarLlamadaVoz();
+                this.chatSubscriptionActive = false;
+            }
+        }
+
         conectarSalaOnline(codigoSala) {
             this.chatSubscriptionActive = false;
             this.limpiarMensajes();
 
             const badge = document.getElementById('chat-room-badge');
             if (badge) badge.innerText = codigoSala ? `Sala: ${codigoSala}` : 'Sala Local';
+
+            this._actualizarIndicadorEstado();
 
             if (window.FirebaseManager && window.FirebaseManager.isAvailable() && codigoSala) {
                 this.chatSubscriptionActive = true;
@@ -221,7 +286,7 @@
         abrirChat() {
             this.isOpen = true;
             this.unreadCount = 0;
-            this._actualizarBadges();
+            this._actualizarIndicadorEstado();
 
             const drawer = document.getElementById('chat-drawer');
             if (drawer) {
@@ -244,6 +309,7 @@
                 drawer.style.display = 'none';
                 drawer.classList.remove('chat-drawer-open');
             }
+            this._actualizarIndicadorEstado();
         }
 
         limpiarMensajes() {
@@ -251,7 +317,7 @@
             const container = document.getElementById('chat-messages-container');
             if (container) container.innerHTML = '';
             this.unreadCount = 0;
-            this._actualizarBadges();
+            this._actualizarIndicadorEstado();
         }
 
         enviarMensaje(texto, tipo = 'texto') {
@@ -337,17 +403,77 @@
         }
 
         _actualizarBadges() {
-            const floatBadge = document.getElementById('chat-unread-badge');
+            this._actualizarIndicadorEstado();
+        }
+
+        _actualizarIndicadorEstado() {
+            const floatBtn = document.getElementById('floating-chat-btn');
+            const iconEl = floatBtn ? floatBtn.querySelector('.chat-icon') : null;
+            const dotEl = document.getElementById('chat-status-dot');
+            const unreadBadge = document.getElementById('chat-unread-badge');
+            const voiceActiveDot = document.getElementById('voice-active-indicator');
+
+            // Colores solicitados:
+            // 1. ROJO: cuando se encuentre activa una llamada
+            // 2. AMARILLO: cuando haya chats sin leer
+            // 3. VERDE: cuando solo esté pronto para interactuar
+            let estado = 'verde';
+            let tooltip = 'Pronto para interactuar 🟢';
+            let iconChar = '💬';
+
+            if (this.voice && this.voice.active) {
+                estado = 'rojo';
+                tooltip = 'Llamada de voz activa 🔴';
+                iconChar = '📞';
+            } else if (this.unreadCount > 0) {
+                estado = 'amarillo';
+                tooltip = `${this.unreadCount} mensaje${this.unreadCount > 1 ? 's' : ''} sin leer 🟡`;
+                iconChar = '💬';
+            } else {
+                estado = 'verde';
+                tooltip = 'Pronto para interactuar 🟢';
+                iconChar = '💬';
+            }
+
+            if (iconEl) {
+                iconEl.innerText = iconChar;
+            }
+
+            if (dotEl) {
+                dotEl.className = `chat-status-dot dot-${estado}`;
+                dotEl.title = tooltip;
+                dotEl.style.display = 'block';
+            }
+
+            if (floatBtn) {
+                floatBtn.title = tooltip;
+            }
+
+            if (unreadBadge) {
+                const countStr = this.unreadCount > 9 ? '9+' : String(this.unreadCount);
+                unreadBadge.innerText = countStr;
+                unreadBadge.style.display = this.unreadCount > 0 ? 'inline-flex' : 'none';
+            }
+
+            if (voiceActiveDot) {
+                voiceActiveDot.style.display = (this.voice && this.voice.active) ? 'block' : 'none';
+            }
+
+            // Sincronizar barra superior y menú hamburguesa si están en pantalla
             const topBadge = document.getElementById('top-chat-badge');
             const hBadge = document.getElementById('h-chat-badge');
-
-            const countStr = this.unreadCount > 9 ? '9+' : String(this.unreadCount);
-            const mostrar = this.unreadCount > 0;
-
-            [floatBadge, topBadge, hBadge].forEach(badge => {
-                if (badge) {
-                    badge.innerText = countStr;
-                    badge.style.display = mostrar ? 'inline-flex' : 'none';
+            [topBadge, hBadge].forEach(b => {
+                if (!b) return;
+                b.className = `chat-nav-dot dot-${estado}`;
+                if (estado === 'amarillo') {
+                    b.innerText = this.unreadCount > 9 ? '9+' : String(this.unreadCount);
+                    b.style.display = 'inline-flex';
+                } else if (estado === 'rojo') {
+                    b.innerText = '🔴';
+                    b.style.display = 'inline-flex';
+                } else {
+                    b.innerText = '';
+                    b.style.display = 'inline-block';
                 }
             });
         }
@@ -487,6 +613,7 @@
                 }
 
                 this._actualizarControlesVozUI();
+                this._actualizarIndicadorEstado();
 
                 // Mostrar indicador de voz en botón flotante
                 const voiceDot = document.getElementById('voice-active-indicator');
@@ -498,6 +625,7 @@
                 this.voice.connecting = false;
                 this._actualizarEstadoVozUI("Micrófono no conectado", "disconnected");
                 this._actualizarControlesVozUI();
+                this._actualizarIndicadorEstado();
                 alert("No se pudo acceder al micrófono. Por favor permite los permisos de audio en tu navegador.");
             }
         }
@@ -647,6 +775,7 @@
 
             this._actualizarEstadoVozUI("Llamada de voz desconectada", "disconnected");
             this._actualizarControlesVozUI();
+            this._actualizarIndicadorEstado();
 
             const voiceDot = document.getElementById('voice-active-indicator');
             if (voiceDot) voiceDot.style.display = 'none';
