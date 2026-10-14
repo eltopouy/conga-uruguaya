@@ -158,6 +158,15 @@ class CongaEngine {
             p.puntosSueltos = 0;
         });
 
+        // Determinar quién es el mano activo de la ronda
+        this.turnoSeat = this.manoSeat;
+        let startAttempts = 0;
+        while (this.players[this.turnoSeat].eliminado && startAttempts < this.numJugadores) {
+            this.turnoSeat = (this.turnoSeat + 1) % this.numJugadores;
+            startAttempts++;
+        }
+        const manoActual = this.turnoSeat;
+
         // Repartir 7 cartas a cada jugador no eliminado
         for (let r = 0; r < 7; r++) {
             for (let s = 0; s < this.numJugadores; s++) {
@@ -168,18 +177,16 @@ class CongaEngine {
             }
         }
 
-        // Poner la primera carta boca arriba en el pozo de descarte
-        if (this.deck.length > 0) {
-            this.discardPile.push(this.deck.pop());
+        // El jugador mano recibe su 8va carta para salir jugando
+        if (this.players[manoActual] && !this.players[manoActual].eliminado && this.deck.length > 0) {
+            this.players[manoActual].hand.push(this.deck.pop());
         }
 
-        // Turno inicial: empieza el mano de la ronda
-        this.turnoSeat = this.manoSeat;
-        let startAttempts = 0;
-        while (this.players[this.turnoSeat].eliminado && startAttempts < this.numJugadores) {
-            this.turnoSeat = (this.turnoSeat + 1) % this.numJugadores;
-            startAttempts++;
-        }
+        // El pozo de descarte comienza completamente vacío
+        this.discardPile = [];
+
+        // El mano empieza directamente en fase de descarte (no saca del mazo)
+        this.fase = 'descartar';
 
         // Actualizar melds de cada jugador
         this.actualizarMeldsTodos();

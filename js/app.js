@@ -284,9 +284,11 @@ function renderJuego() {
         if (topDiscard) {
             discardEl.style.backgroundImage = `url("${topDiscard.getAssetUrl ? topDiscard.getAssetUrl() : ''}")`;
             discardEl.style.opacity = '1';
+            discardEl.style.border = '2px solid rgba(255, 255, 255, 0.4)';
         } else {
             discardEl.style.backgroundImage = 'none';
-            discardEl.style.opacity = '0.3';
+            discardEl.style.opacity = '0.25';
+            discardEl.style.border = '2px dashed rgba(255, 255, 255, 0.35)';
         }
 
         if (isMyTurnToDraw && topDiscard) discardEl.classList.add('highlight-draw');
@@ -450,9 +452,13 @@ function renderJuego() {
             banner.classList.add('my-turn');
             turnIcon.innerText = "⭐";
             if (engine.fase === 'robar') {
-                turnText.innerText = "Tu turno: Robá del mazo o del pozo";
+                turnText.innerText = (engine.discardPile.length > 0)
+                    ? "Tu turno: Robá del mazo o del pozo"
+                    : "Tu turno: Robá del mazo";
             } else if (engine.fase === 'descartar') {
-                turnText.innerText = "Tu turno: Selecciona una carta para descartar o cortar";
+                turnText.innerText = (engine.discardPile.length === 0)
+                    ? "Sos mano: Tienes 8 cartas. Selecciona una carta para tirar al pozo e iniciar la partida"
+                    : "Tu turno: Selecciona una carta para descartar o cortar";
             }
         } else {
             banner.classList.remove('my-turn');
@@ -928,6 +934,7 @@ document.getElementById('stock-pile-container').addEventListener('click', () => 
 document.getElementById('discard-pile-container').addEventListener('click', () => {
     if (engine.turnoSeat === miSeat) {
         if (engine.fase === 'robar') {
+            if (engine.discardPile.length === 0) return; // Pozo vacío al iniciar
             if (modoJuego === 'multiplayer' && miRol !== 'creador') {
                 window.FirebaseManager.enviarAccion('robar_pozo');
             } else {

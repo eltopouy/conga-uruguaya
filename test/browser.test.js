@@ -47,7 +47,8 @@ const assert = require('assert');
         });
 
         // TEST 2: Iniciar partida 1 vs 1
-        await runTest('Clic en "1 vs 1" inicia la partida, reparte 7 cartas y muestra el pozo', async () => {
+        // TEST 2: Iniciar partida 1 vs 1
+        await runTest('Clic en "1 vs 1" inicia la partida, el mano recibe 8 cartas y el pozo inicia vacío', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
             await page.goto(filePath, { waitUntil: 'domcontentloaded' });
@@ -58,15 +59,15 @@ const assert = require('assert');
             const startScreenVisible = await page.isVisible('#start-screen');
             assert.strictEqual(startScreenVisible, false, 'La pantalla de inicio debe ocultarse');
 
-            // Verificar 7 cartas en mano
+            // El jugador es mano, por lo que recibe 8 cartas para salir descartando
             const cards = await page.$$('#player-hand-fan .hand-card');
-            assert.strictEqual(cards.length, 7, 'El jugador debe tener 7 cartas');
+            assert.strictEqual(cards.length, 8, 'El mano debe tener 8 cartas');
 
-            // Verificar que el pozo de descarte tiene carta visible
+            // Verificar que el pozo de descarte inicia vacío (sin imagen de carta)
             const discardBg = await page.evaluate(() => {
                 return document.getElementById('discard-pile-element').style.backgroundImage;
             });
-            assert(discardBg && discardBg !== 'none', 'El pozo de descarte debe mostrar una carta');
+            assert(discardBg === 'none' || !discardBg, 'El pozo de descarte debe iniciar vacío');
 
             await page.close();
         });
@@ -120,8 +121,8 @@ const assert = require('assert');
             await page.close();
         });
 
-        // TEST 5: Mecánica de juego: Robar carta incrementa mano a 8
-        await runTest('Robar del mazo pasa la mano a 8 cartas y habilita botón descartar al seleccionar', async () => {
+        // TEST 5: Mecánica de juego: Mano de 8 cartas habilita descarte al seleccionar e inaugura el pozo
+        await runTest('Mano de 8 cartas habilita descarte al seleccionar e inaugura el pozo', async () => {
             const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
             await page.route('**/*.firebaseio.com/**', route => route.abort());
             await page.goto(filePath, { waitUntil: 'domcontentloaded' });
@@ -129,21 +130,31 @@ const assert = require('assert');
             await page.click('#btn-start-1v1');
             await page.waitForTimeout(600);
 
-            // Robar del mazo
-            await page.click('#btn-robar-mazo');
-            await page.waitForTimeout(300);
-
-            const cardsAfterDraw = await page.$$('#player-hand-fan .hand-card');
-            assert.strictEqual(cardsAfterDraw.length, 8, 'El jugador debe tener 8 cartas tras robar');
+            // Al ser mano, ya tiene 8 cartas
+            const cards = await page.$$('#player-hand-fan .hand-card');
+            assert.strictEqual(cards.length, 8, 'El mano tiene 8 cartas para salir');
 
             // Seleccionar la primera carta
-            await cardsAfterDraw[0].click();
+            await cards[0].click();
             await page.waitForTimeout(200);
 
             const isDescartarEnabled = await page.evaluate(() => {
                 return !document.getElementById('btn-descartar').disabled;
             });
             assert.strictEqual(isDescartarEnabled, true, 'El botón descartar debe habilitarse al seleccionar una carta');
+
+            // Descartar para inaugurar el pozo
+            await page.click('#btn-descartar');
+            await page.waitForTimeout(400);
+
+            // La mano del mano se reduce a 7 y el pozo tiene la carta
+            const cardsAfter = await page.$$('#player-hand-fan .hand-card');
+            assert.strictEqual(cardsAfter.length, 7, 'La mano queda con 7 cartas');
+
+            const discardBg = await page.evaluate(() => {
+                return document.getElementById('discard-pile-element').style.backgroundImage;
+            });
+            assert(discardBg && discardBg !== 'none', 'El pozo debe tener la carta inaugurada');
 
             await page.close();
         });
@@ -161,7 +172,7 @@ const assert = require('assert');
             await page.waitForTimeout(300);
 
             const cards = await page.$$('#player-hand-fan .hand-card');
-            assert.strictEqual(cards.length, 7, 'Deben mantenerse las 7 cartas ordenadas');
+            assert.strictEqual(cards.length, 8, 'Deben mantenerse las 8 cartas ordenadas');
 
             await page.close();
         });
@@ -220,7 +231,7 @@ const assert = require('assert');
 
             // La carta que estaba en índice 0 ahora debe haberse movido de la primera posición
             assert.notStrictEqual(newOrder[0], initialOrder[0], 'La carta 0 original debe haberse desplazado');
-            assert.strictEqual(newOrder.length, 7, 'La cantidad de cartas debe seguir siendo 7');
+            assert.strictEqual(newOrder.length, initialOrder.length, 'La cantidad de cartas debe mantenerse');
 
             await page.close();
         });
@@ -251,7 +262,8 @@ const assert = require('assert');
 
             // 3. Tras activar la opción y guardar, cada carta debe mostrar su badge
             badges = await page.$$('#player-hand-fan .card-meld-badge');
-            assert.strictEqual(badges.length, 7, 'Debe mostrar 7 badges de puntos/juego tras activarlo en configuración');
+            const handCount = await page.evaluate(() => window.engine.players[0].hand.length);
+            assert.strictEqual(badges.length, handCount, 'Debe mostrar badges de puntos/juego para todas las cartas de la mano tras activarlo en configuración');
 
             // 4. Volver a desactivar y guardar
             await page.click('#btn-config');

@@ -177,30 +177,47 @@ test('Mano con 1 trío y 4 cartas sueltas calcula exactamente los puntos sueltos
 // 4. Mecánica de Turno: Robar, Descartar y Cortar
 console.log('\n🎲 4. Mecánica de Turnos y Corte:');
 
-test('Robar del mazo otorga 1 carta y cambia fase a descartar', () => {
+test('El mano recibe 8 cartas para salir descartando, el rival 7 y el pozo inicia vacío', () => {
     const engine = new CongaEngine();
     engine.configurarPartida(2);
-    assert.strictEqual(engine.fase, 'robar');
-    assert.strictEqual(engine.players[0].hand.length, 7);
+    assert.strictEqual(engine.turnoSeat, 0, 'El mano es el jugador 0');
+    assert.strictEqual(engine.players[0].hand.length, 8, 'El mano recibe 8 cartas');
+    assert.strictEqual(engine.players[1].hand.length, 7, 'El rival recibe 7 cartas');
+    assert.strictEqual(engine.discardPile.length, 0, 'El pozo inicia vacío');
+    assert.strictEqual(engine.fase, 'descartar', 'El mano inicia directamente en fase descartar');
 
-    const carta = engine.robarMazo(0);
-    assert.notStrictEqual(carta, null);
-    assert.strictEqual(engine.players[0].hand.length, 8);
+    // El mano descarta su carta para inaugurar el pozo
+    const descartada = engine.descartarCarta(0, 0);
+    assert.notStrictEqual(descartada, null);
+    assert.strictEqual(engine.players[0].hand.length, 7);
+    assert.strictEqual(engine.discardPile.length, 1, 'La carta descartada inaugura el pozo');
+    assert.strictEqual(engine.turnoSeat, 1, 'Pasa el turno al jugador 1');
+    assert.strictEqual(engine.fase, 'robar', 'El jugador 1 debe robar');
+
+    // Jugador 1 roba del mazo y pasa a 8 cartas
+    const robada = engine.robarMazo(1);
+    assert.notStrictEqual(robada, null);
+    assert.strictEqual(engine.players[1].hand.length, 8);
     assert.strictEqual(engine.fase, 'descartar');
 });
 
 test('Descartar carta reduce mano a 7 y pasa el turno al siguiente jugador', () => {
     const engine = new CongaEngine();
     engine.configurarPartida(2);
-    engine.robarMazo(0);
+
+    // Mano (0) descarta para salir
+    engine.descartarCarta(0, 0);
+
+    // Jugador 1 roba del mazo
+    engine.robarMazo(1);
 
     const pozoAntes = engine.discardPile.length;
-    const descartada = engine.descartarCarta(0, 0);
+    const descartada = engine.descartarCarta(1, 0);
 
     assert.notStrictEqual(descartada, null);
-    assert.strictEqual(engine.players[0].hand.length, 7);
+    assert.strictEqual(engine.players[1].hand.length, 7);
     assert.strictEqual(engine.discardPile.length, pozoAntes + 1);
-    assert.strictEqual(engine.turnoSeat, 1);
+    assert.strictEqual(engine.turnoSeat, 0);
     assert.strictEqual(engine.fase, 'robar');
 });
 

@@ -31,15 +31,15 @@ console.log('======================================================\n');
 // 1. Simulación de Flujo 1 vs 1
 console.log('🤖 1. Simulación de Flujo 1 vs 1:');
 
-testE2E('Iniciar Partida 1 vs 1 reparte 7 cartas a cada jugador y pone 1 carta en el pozo', () => {
+testE2E('Reparto reglamentario 1 vs 1: el mano recibe 8 cartas para salir descartando, el rival 7 y el pozo inicia vacío', () => {
     const engine = new CongaEngine();
     engine.configurarPartida(2);
 
     assert.strictEqual(engine.players.length, 2);
-    assert.strictEqual(engine.players[0].hand.length, 7);
-    assert.strictEqual(engine.players[1].hand.length, 7);
-    assert.strictEqual(engine.discardPile.length, 1);
-    assert.strictEqual(engine.fase, 'robar');
+    assert.strictEqual(engine.players[0].hand.length, 8, 'El mano recibe 8 cartas');
+    assert.strictEqual(engine.players[1].hand.length, 7, 'El rival recibe 7 cartas');
+    assert.strictEqual(engine.discardPile.length, 0, 'El pozo inicia vacío');
+    assert.strictEqual(engine.fase, 'descartar', 'El mano sale directamente en fase descartar');
     assert.strictEqual(engine.partidoIniciado, true);
     assert.strictEqual(engine.partidoFinalizado, false);
 });
@@ -49,17 +49,16 @@ testE2E('Simulación completa de turno de jugador humano y respuesta de bot', ()
     const bot = new CongaBot();
     engine.configurarPartida(2);
 
-    // Turno de Jugador 0 (Humano)
+    // Turno inicial de Jugador 0 (Humano como Mano): sale directamente descartando de sus 8 cartas
     assert.strictEqual(engine.turnoSeat, 0);
-    const robada = engine.robarMazo(0);
-    assert.notStrictEqual(robada, null);
-    assert.strictEqual(engine.players[0].hand.length, 8);
     assert.strictEqual(engine.fase, 'descartar');
+    assert.strictEqual(engine.players[0].hand.length, 8);
 
-    // Descartar carta del índice 7
+    // Descartar carta del índice 7 para inaugurar el pozo
     const descartada = engine.descartarCarta(0, 7);
     assert.notStrictEqual(descartada, null);
     assert.strictEqual(engine.players[0].hand.length, 7);
+    assert.strictEqual(engine.discardPile.length, 1);
     assert.strictEqual(engine.turnoSeat, 1); // Ahora es el turno del bot
     assert.strictEqual(engine.fase, 'robar');
 
@@ -93,9 +92,11 @@ testE2E('Inicialización correcta de 4 Jugadores y rotación de mano', () => {
     engine.configurarPartida(4);
 
     assert.strictEqual(engine.players.length, 4);
-    for (let i = 0; i < 4; i++) {
-        assert.strictEqual(engine.players[i].hand.length, 7);
-    }
+    assert.strictEqual(engine.players[0].hand.length, 8, 'Mano recibe 8 cartas');
+    assert.strictEqual(engine.players[1].hand.length, 7);
+    assert.strictEqual(engine.players[2].hand.length, 7);
+    assert.strictEqual(engine.players[3].hand.length, 7);
+    assert.strictEqual(engine.discardPile.length, 0, 'Pozo inicial vacío');
     assert.strictEqual(engine.deck.length, 50 - (4 * 7) - 1); // 50 - 28 - 1 = 21 cartas en mazo
 });
 
@@ -104,7 +105,7 @@ testE2E('Avanzar turno en 4 jugadores rota 0 -> 1 -> 2 -> 3 -> 0', () => {
     engine.configurarPartida(4);
 
     assert.strictEqual(engine.turnoSeat, 0);
-    engine.robarMazo(0);
+    // Mano descarta directamente
     engine.descartarCarta(0, 0);
     assert.strictEqual(engine.turnoSeat, 1);
 
@@ -155,6 +156,7 @@ testE2E('Reordenamiento manual de cartas en mano permuta correctamente la posici
     const engine = new CongaEngine();
     engine.configurarPartida(2);
     const hand = engine.players[0].hand;
+    const initialLen = hand.length; // 8 para el mano al iniciar
     const card0 = hand[0];
     const card3 = hand[3];
 
@@ -164,12 +166,12 @@ testE2E('Reordenamiento manual de cartas en mano permuta correctamente la posici
 
     assert.strictEqual(hand[0].id, card3.id);
     assert.strictEqual(hand[1].id, card0.id);
-    assert.strictEqual(hand.length, 7);
+    assert.strictEqual(hand.length, initialLen);
 
-    // Mover la carta de posición 0 al final (índice 6)
+    // Mover la carta de posición 0 al final
     const [movedCard2] = hand.splice(0, 1);
-    hand.splice(6, 0, movedCard2);
-    assert.strictEqual(hand[6].id, card3.id);
+    hand.splice(initialLen - 1, 0, movedCard2);
+    assert.strictEqual(hand[initialLen - 1].id, card3.id);
     assert.strictEqual(hand[0].id, card0.id);
 });
 

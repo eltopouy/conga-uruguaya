@@ -40,13 +40,11 @@
             <!-- Mazo de Robo (Stock) -->
             <div class="pile-container" id="stock-pile-container" title="Robar carta del mazo">
                 <div class="card-pile deck-pile" id="deck-pile-element"></div>
-                <span class="pile-label">📥 Mazo</span>
             </div>
 
             <!-- Pozo de Descarte (Discard Pile) -->
             <div class="pile-container" id="discard-pile-container" title="Robar o descartar aquí">
                 <div class="card-pile discard-pile-card" id="discard-pile-element"></div>
-                <span class="pile-label">♻️ Pozo</span>
             </div>
         </main>
 
@@ -124,10 +122,12 @@
             <div class="modal-body">
                 <p><strong>Objetivo del Juego:</strong> Ligar tus 7 cartas en combinaciones válidas (escaleras del mismo palo o piernas/tríos del mismo número) y cortar con la menor cantidad de puntos sueltos posible. Los jugadores acumulan puntos ronda tras ronda y son eliminados al superar los 100 puntos.</p>
 
-                <h4 style="color:var(--gold);">1. Turno de Juego:</h4>
+                <h4 style="color:var(--gold);">1. Reparto y Salida (El Mano):</h4>
                 <ul style="padding-left:18px;">
-                    <li><strong>Robo:</strong> En tu turno robas 1 carta (del mazo oculto o la carta superior del pozo de descarte).</li>
-                    <li><strong>Descarte / Corte:</strong> Te quedas con 8 cartas momentáneamente y debes tirar 1 carta al pozo. Si cumples la condición de corte, puedes <em>Cortar</em> en lugar de pasar el turno.</li>
+                    <li><strong>Reparto de cartas:</strong> Se reparten 7 cartas a cada jugador, excepto a quien es <strong>mano</strong> (primer turno de la ronda), quien recibe <strong>8 cartas</strong>.</li>
+                    <li><strong>Pozo inicial vacío:</strong> Al comenzar la ronda, el pozo de descarte queda completamente vacío (no se destapa carta previa del mazo).</li>
+                    <li><strong>Salida del mano:</strong> El mano inicia la partida directamente jugando: debe descartar 1 de sus 8 cartas sobre la mesa, la cual se convierte en la primera carta del pozo (no roba del mazo).</li>
+                    <li><strong>Turnos siguientes:</strong> A partir de allí, cada jugador en su turno roba 1 carta (del mazo oculto o la carta visible del pozo), completa 8 cartas y descarta 1 al pozo (o corta si cumple las condiciones).</li>
                 </ul>
 
                 <h4 style="color:var(--gold);">2. Combinaciones Válidas (Juegos):</h4>
