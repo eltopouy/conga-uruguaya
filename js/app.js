@@ -269,6 +269,12 @@ function renderJuego() {
     }
 
     // 2. Centro de la mesa: Mazo de Robo y Pozo
+    const centerTableEl = document.getElementById('center-table');
+    const isAcomodoOrFin = (engine.fase === 'acomodo' || engine.fase === 'fin_ronda') && engine.corteInfo;
+    if (centerTableEl) {
+        centerTableEl.style.display = isAcomodoOrFin ? 'none' : 'flex';
+    }
+
     const deckEl = document.getElementById('deck-pile-element');
     const deckCount = engine.deck ? engine.deck.length : 0;
     const isMyTurnToDraw = (engine.turnoSeat === miSeat && engine.fase === 'robar');
@@ -430,42 +436,48 @@ function renderJuego() {
     
     if (turnText && banner) {
         if (engine.fase === 'acomodo') {
+            banner.classList.add('banner-interactive');
+            banner.title = "Haz clic aquí para ver los resultados de la ronda";
             const corte = engine.corteInfo;
             if (corte) {
                 if (corte.cortadorSeat === miSeat) {
                     banner.classList.add('my-turn');
                     turnIcon.innerText = "✂️";
-                    turnText.innerText = "Cortaste la ronda. Pulsa 'Ver Resultados' para ver los puntajes.";
+                    turnText.innerHTML = `Cortaste la ronda. <span class="banner-action-pill">📊 Ver Resultados ➔</span>`;
                 } else if (corte.permiteAcomodo) {
                     banner.classList.add('my-turn');
                     turnIcon.innerText = "🃏";
                     const tieneColocables = myPlayer && myPlayer.hand.some(c => engine.puedeColocarCarta(miSeat, c.id));
-                    turnText.innerText = tieneColocables 
-                        ? "¡Coloca tus cartas! Toca las cartas destacadas en verde o usa 'Colocar Mis Cartas'."
-                        : `${corte.cortadorNombre} cortó con ${corte.puntosSueltos} pts. No tienes cartas para colocar. Pulsa 'Ver Resultados'.`;
+                    turnText.innerHTML = tieneColocables 
+                        ? `¡Coloca tus cartas! Toca las cartas destacadas o pulsa <span class="banner-action-pill">📊 Ver Resultados ➔</span>`
+                        : `${corte.cortadorNombre} cortó con ${corte.puntosSueltos} pts. <span class="banner-action-pill">📊 Ver Resultados ➔</span>`;
                 } else {
                     banner.classList.remove('my-turn');
                     turnIcon.innerText = "⭐";
-                    turnText.innerText = `${corte.cortadorNombre} cortó con 0 o Conga. Pulsa 'Ver Resultados'.`;
+                    turnText.innerHTML = `${corte.cortadorNombre} cortó con 0 o Conga. <span class="banner-action-pill">📊 Ver Resultados ➔</span>`;
                 }
             }
-        } else if (engine.turnoSeat === miSeat) {
-            banner.classList.add('my-turn');
-            turnIcon.innerText = "⭐";
-            if (engine.fase === 'robar') {
-                turnText.innerText = (engine.discardPile.length > 0)
-                    ? "Tu turno: Robá del mazo o del pozo"
-                    : "Tu turno: Robá del mazo";
-            } else if (engine.fase === 'descartar') {
-                turnText.innerText = (engine.discardPile.length === 0)
-                    ? "Sos mano: Tienes 8 cartas. Selecciona una carta para tirar al pozo e iniciar la partida"
-                    : "Tu turno: Selecciona una carta para descartar o cortar";
-            }
         } else {
-            banner.classList.remove('my-turn');
-            turnIcon.innerText = "⏳";
-            const activePlayer = engine.players[engine.turnoSeat];
-            turnText.innerText = `Turno de ${activePlayer ? activePlayer.name : 'Rival'}...`;
+            banner.classList.remove('banner-interactive');
+            banner.title = "";
+            if (engine.turnoSeat === miSeat) {
+                banner.classList.add('my-turn');
+                turnIcon.innerText = "⭐";
+                if (engine.fase === 'robar') {
+                    turnText.innerText = (engine.discardPile.length > 0)
+                        ? "Tu turno: Robá del mazo o del pozo"
+                        : "Tu turno: Robá del mazo";
+                } else if (engine.fase === 'descartar') {
+                    turnText.innerText = (engine.discardPile.length === 0)
+                        ? "Sos mano: Tienes 8 cartas. Selecciona una carta para tirar al pozo e iniciar la partida"
+                        : "Tu turno: Selecciona una carta para descartar o cortar";
+                }
+            } else {
+                banner.classList.remove('my-turn');
+                turnIcon.innerText = "⏳";
+                const activePlayer = engine.players[engine.turnoSeat];
+                turnText.innerText = `Turno de ${activePlayer ? activePlayer.name : 'Rival'}...`;
+            }
         }
     }
 
@@ -1089,6 +1101,37 @@ document.getElementById('btn-confirmar-corte').addEventListener('click', () => {
         finalizarFaseAcomodoUI();
     }
 });
+
+// Clic en el banner / leyenda de Ver Resultados para avanzar de forma directa
+document.getElementById('turn-status-banner').addEventListener('click', () => {
+    if (engine && engine.fase === 'acomodo') {
+        if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+            window.FirebaseManager.enviarAccion('confirmar_corte');
+        } else {
+            finalizarFaseAcomodoUI();
+        }
+    }
+});
+
+// Botón "Ver Resultados" en la cabecera de la mesa de cartas bajadas
+const btnVerMesa = document.getElementById('btn-ver-resultados-mesa');
+if (btnVerMesa) {
+    btnVerMesa.addEventListener('click', () => {
+        if (engine && engine.fase === 'acomodo') {
+            if (modoJuego === 'multiplayer' && miRol !== 'creador') {
+                window.FirebaseManager.enviarAccion('confirmar_corte');
+            } else {
+                finalizarFaseAcomodoUI();
+            }
+        }
+    });
+}
+
+// Botón rápido en la esquina superior del modal para pasar a siguiente mano
+const btnHeaderSigMano = document.getElementById('btn-header-siguiente-mano');
+if (btnHeaderSigMano) {
+    btnHeaderSigMano.addEventListener('click', avanzarSiguienteMano);
+}
 
 // Auto-ordenar Mano
 document.getElementById('btn-auto-ordenar').addEventListener('click', () => {

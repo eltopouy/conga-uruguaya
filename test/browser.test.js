@@ -561,6 +561,42 @@ const assert = require('assert');
             const meldsAreaVisible = await page.isVisible('#table-melds-area');
             assert.strictEqual(meldsAreaVisible, true, 'Al cortar se entra en la fase de acomodo y se muestra la mesa');
 
+            // 1. El centro de mesa (mazo/pozo) se oculta dinámicamente para que no empuje los botones fuera de pantalla
+            const centerTableDisplay = await page.evaluate(() => document.getElementById('center-table').style.display);
+            assert.strictEqual(centerTableDisplay, 'none', 'El centro de mesa debe ocultarse durante corte para mantener layout compacto');
+
+            // 2. El botón "Ver Resultados" en la mesa debe estar visible y habilitado
+            const btnVerMesaVisible = await page.isVisible('#btn-ver-resultados-mesa');
+            assert.strictEqual(btnVerMesaVisible, true, 'El botón #btn-ver-resultados-mesa debe ser visible');
+
+            // 3. El banner debe tener clase banner-interactive y responder a clic
+            const isBannerInteractive = await page.evaluate(() => document.getElementById('turn-status-banner').classList.contains('banner-interactive'));
+            assert.strictEqual(isBannerInteractive, true, 'El banner debe ser interactivo al cortar');
+
+            // 4. Hacer clic en el banner abre el modal de fin de ronda
+            await page.click('#turn-status-banner');
+            await page.waitForTimeout(400);
+
+            let modalVisible = await page.isVisible('#modal-fin-ronda');
+            assert.strictEqual(modalVisible, true, 'Hacer clic en la leyenda del banner debe abrir el modal de resultados');
+
+            // 5. El botón Siguiente Mano en el modal debe estar visible
+            const btnSiguienteVisible = await page.isVisible('#btn-cerrar-fin-ronda');
+            assert.strictEqual(btnSiguienteVisible, true, 'El botón Siguiente Mano debe estar visible en el modal');
+
+            // 6. Hacer clic en "Siguiente Mano" inicia la nueva ronda y restaura el juego dinámicamente
+            await page.click('#btn-cerrar-fin-ronda');
+            await page.waitForTimeout(500);
+
+            modalVisible = await page.isVisible('#modal-fin-ronda');
+            assert.strictEqual(modalVisible, false, 'El modal debe cerrarse');
+
+            const nextRoundFase = await page.evaluate(() => window.engine.fase);
+            assert(nextRoundFase === 'descartar' || nextRoundFase === 'robar', 'Debe haber comenzado la siguiente ronda');
+
+            const centerTableRestored = await page.evaluate(() => document.getElementById('center-table').style.display);
+            assert.strictEqual(centerTableRestored, 'flex', 'El centro de mesa debe restaurarse para la nueva ronda');
+
             await page.close();
         });
 
