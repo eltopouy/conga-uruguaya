@@ -194,6 +194,27 @@ const assert = require('assert');
             const innerWidth = await page.evaluate(() => window.innerWidth);
             assert(scrollWidth <= innerWidth, 'No debe haber desborde horizontal en celular');
 
+            const fanMetrics = await page.evaluate(() => {
+                const cards = Array.from(document.querySelectorAll('#player-hand-fan .hand-card'));
+                if (cards.length < 2) return null;
+                const rects = cards.map(c => c.getBoundingClientRect());
+                const firstRect = rects[0];
+                const lastRect = rects[rects.length - 1];
+                const step = rects[1].left - rects[0].left;
+                const totalSpan = lastRect.right - firstRect.left;
+                return {
+                    count: cards.length,
+                    cardWidth: firstRect.width,
+                    step: step,
+                    totalSpan: totalSpan,
+                    windowWidth: window.innerWidth
+                };
+            });
+
+            assert(fanMetrics, 'Debe haber cartas en la mano');
+            assert(fanMetrics.totalSpan >= fanMetrics.windowWidth * 0.82, `El abanico debe aprovechar el ancho del celular (${fanMetrics.totalSpan}px vs ${fanMetrics.windowWidth}px)`);
+            assert(fanMetrics.step >= 36, `Cada carta debe tener al menos 36px de separación visible (${fanMetrics.step}px)`);
+
             await page.close();
         });
 

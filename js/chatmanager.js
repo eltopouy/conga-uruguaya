@@ -207,14 +207,17 @@
         }
 
         habilitarChat(habilitado, codigoSala = null) {
-            this.habilitado = !!habilitado;
+            this.habilitado = Boolean(habilitado);
 
             const floatBtn = document.getElementById('floating-chat-btn');
             const topBtn = document.getElementById('btn-chat');
             const hBtn = document.getElementById('h-btn-chat');
 
             if (this.habilitado) {
-                if (floatBtn) floatBtn.style.display = 'flex';
+                if (floatBtn) {
+                    floatBtn.classList.add('chat-enabled');
+                    floatBtn.style.display = 'flex';
+                }
                 if (topBtn) topBtn.style.display = 'block';
                 if (hBtn) hBtn.style.display = 'flex';
 
@@ -224,12 +227,15 @@
                     this._actualizarIndicadorEstado();
                 }
             } else {
-                if (floatBtn) floatBtn.style.display = 'none';
+                if (floatBtn) {
+                    floatBtn.classList.remove('chat-enabled');
+                    floatBtn.style.display = 'none';
+                }
                 if (topBtn) topBtn.style.display = 'none';
                 if (hBtn) hBtn.style.display = 'none';
 
                 if (this.isOpen) this.cerrarChat();
-                if (this.voice.active) this.colgarLlamadaVoz();
+                if (this.voice && this.voice.active) this.colgarLlamadaVoz();
                 this.chatSubscriptionActive = false;
             }
         }
@@ -408,6 +414,19 @@
 
         _actualizarIndicadorEstado() {
             const floatBtn = document.getElementById('floating-chat-btn');
+            const topBadge = document.getElementById('top-chat-badge');
+            const hBadge = document.getElementById('h-chat-badge');
+
+            if (!this.habilitado) {
+                if (floatBtn) {
+                    floatBtn.classList.remove('chat-enabled');
+                    floatBtn.style.display = 'none';
+                }
+                if (topBadge) topBadge.style.display = 'none';
+                if (hBadge) hBadge.style.display = 'none';
+                return;
+            }
+
             const iconEl = floatBtn ? floatBtn.querySelector('.chat-icon') : null;
             const dotEl = document.getElementById('chat-status-dot');
             const unreadBadge = document.getElementById('chat-unread-badge');
@@ -460,8 +479,6 @@
             }
 
             // Sincronizar barra superior y menú hamburguesa si están en pantalla
-            const topBadge = document.getElementById('top-chat-badge');
-            const hBadge = document.getElementById('h-chat-badge');
             [topBadge, hBadge].forEach(b => {
                 if (!b) return;
                 b.className = `chat-nav-dot dot-${estado}`;

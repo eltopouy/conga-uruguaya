@@ -358,11 +358,11 @@ function ajustarEscalaResponsiva() {
         toolbarBtnPad = '6px 12px';
         btnFontSize = '0.82rem';
     } else if (w <= 600) {
-        // Móviles en vertical
-        cardW = Math.max(72, Math.min(92, Math.round(w * 0.185)));
+        // Móviles en vertical: tamaño legible optimizado
+        cardW = Math.max(74, Math.min(88, Math.round(w * 0.19)));
         cardH = Math.round(cardW * 1.48);
-        cardOverlap = -12;
-        handH = cardH + 12;
+        cardOverlap = -14;
+        handH = cardH + 14;
         pileW = Math.max(68, Math.min(84, Math.round(w * 0.175)));
         pileH = Math.round(pileW * 1.48);
         oppCardW = 26;
@@ -371,8 +371,22 @@ function ajustarEscalaResponsiva() {
         bannerFontSize = '0.85rem';
         toolbarBtnPad = '8px 12px';
         btnFontSize = '0.84rem';
+    } else if (w <= 768) {
+        // Móviles anchos o tablets compactas
+        cardW = Math.max(88, Math.min(104, Math.round(w * 0.16)));
+        cardH = Math.round(cardW * 1.48);
+        cardOverlap = -16;
+        handH = cardH + 16;
+        pileW = 86;
+        pileH = 128;
+        oppCardW = 28;
+        oppCardH = 40;
+        oppCardOverlap = -12;
+        bannerFontSize = '0.88rem';
+        toolbarBtnPad = '8px 14px';
+        btnFontSize = '0.86rem';
     } else {
-        // Formatos intermedios
+        // Formatos intermedios (768px a 800px)
         cardW = 104;
         cardH = 154;
         cardOverlap = -14;
@@ -387,12 +401,12 @@ function ajustarEscalaResponsiva() {
         btnFontSize = '0.88rem';
     }
 
-    // Asegurar que el ancho de 8 cartas quepa en la ventana sin desbordar
-    const maxAnchoMano = w - 24;
+    // Aprovechar todo el ancho del celular para calcular el abanico de 8 cartas sin desbordar
+    const maxAnchoMano = (w <= 768) ? Math.max(310, w - 8) : (w - 24);
     const anchoEstimado = cardW + 7 * (cardW + cardOverlap);
-    if (anchoEstimado > maxAnchoMano) {
+    if (w <= 768 || anchoEstimado > maxAnchoMano) {
         const overlapCalculado = Math.floor((maxAnchoMano - 8 * cardW) / 7);
-        cardOverlap = Math.min(-8, overlapCalculado);
+        cardOverlap = Math.min(-6, overlapCalculado);
     }
 
     root.style.setProperty('--card-w', `${cardW}px`);
@@ -717,6 +731,31 @@ function renderJuego() {
         analysis.melds.forEach(m => m.forEach(c => meldedSet.add(c.id)));
 
         const totalCards = myPlayer.hand.length;
+        const isMobile = window.innerWidth <= 768;
+        const rootStyles = getComputedStyle(document.documentElement);
+        const cardWVal = parseFloat(rootStyles.getPropertyValue('--card-w')) || (isMobile ? 76 : 128);
+
+        // En celular, aprovechar todo el ancho de la pantalla para el abanico
+        let dynamicOverlap = parseFloat(rootStyles.getPropertyValue('--card-overlap')) || -20;
+        if (totalCards > 1) {
+            if (isMobile) {
+                const anchoDisponible = Math.max(310, (window.innerWidth || 360) - 8);
+                const step = Math.min(cardWVal - 10, (anchoDisponible - cardWVal) / (totalCards - 1));
+                dynamicOverlap = Math.round(step - cardWVal);
+            } else {
+                const anchoDisponible = Math.min((window.innerWidth || 1024) - 30, 960);
+                const spanEstimado = cardWVal + (totalCards - 1) * (cardWVal + dynamicOverlap);
+                if (spanEstimado > anchoDisponible) {
+                    const step = (anchoDisponible - cardWVal) / (totalCards - 1);
+                    dynamicOverlap = Math.min(-10, Math.round(step - cardWVal));
+                }
+            }
+        }
+        plyHandFan.style.setProperty('--card-overlap', `${dynamicOverlap}px`);
+
+        const angleStep = isMobile ? 2.2 : 4;
+        const yStep = isMobile ? 1.5 : 3;
+
         myPlayer.hand.forEach((carta, idx) => {
             const cardEl = document.createElement('div');
             cardEl.className = 'hand-card';
@@ -724,9 +763,14 @@ function renderJuego() {
             cardEl.dataset.index = idx;
 
             // Inclinación suave en abanico
-            const angle = (idx - (totalCards - 1) / 2) * 4;
-            const yOffset = Math.abs(idx - (totalCards - 1) / 2) * 3;
+            const angle = (idx - (totalCards - 1) / 2) * angleStep;
+            const yOffset = Math.abs(idx - (totalCards - 1) / 2) * yStep;
             cardEl.style.transform = `rotate(${angle}deg) translateY(${yOffset}px)`;
+            if (idx > 0) {
+                cardEl.style.marginLeft = `${dynamicOverlap}px`;
+            } else {
+                cardEl.style.marginLeft = '0px';
+            }
 
             if (selectedCardIndex === idx) {
                 cardEl.classList.add('selected-card');
@@ -1087,11 +1131,15 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
                 if (nearestSlot !== currentSlotIndex) {
                     currentSlotIndex = nearestSlot;
 
+                    const isMobDrag = (window.innerWidth <= 768);
+                    const angleStepD = isMobDrag ? 2.2 : 4;
+                    const yStepD = isMobDrag ? 1.5 : 3;
+
                     siblingCards.forEach((sibling, sIdx) => {
                         if (sIdx === index) return;
 
-                        const baseAngle = (sIdx - (totalCards - 1) / 2) * 4;
-                        const baseYOffset = Math.abs(sIdx - (totalCards - 1) / 2) * 3;
+                        const baseAngle = (sIdx - (totalCards - 1) / 2) * angleStepD;
+                        const baseYOffset = Math.abs(sIdx - (totalCards - 1) / 2) * yStepD;
                         sibling.style.transition = 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1)';
 
                         if (index < currentSlotIndex) {
@@ -1113,10 +1161,13 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
                 }
             } else {
                 // Durante el gesto de descarte hacia el pozo, mantener las otras cartas de la mano sin desplazar
+                const isMobDrag = (window.innerWidth <= 768);
+                const angleStepD = isMobDrag ? 2.2 : 4;
+                const yStepD = isMobDrag ? 1.5 : 3;
                 siblingCards.forEach((sibling, sIdx) => {
                     if (sIdx === index) return;
-                    const baseAngle = (sIdx - (totalCards - 1) / 2) * 4;
-                    const baseYOffset = Math.abs(sIdx - (totalCards - 1) / 2) * 3;
+                    const baseAngle = (sIdx - (totalCards - 1) / 2) * angleStepD;
+                    const baseYOffset = Math.abs(sIdx - (totalCards - 1) / 2) * yStepD;
                     sibling.style.transform = `rotate(${baseAngle}deg) translateY(${baseYOffset}px)`;
                 });
             }
@@ -2020,10 +2071,10 @@ if (btnConfirmarCrear) {
                     lista.innerHTML = sala.jugadores.map(j => `<div style="padding:6px; background:rgba(255,255,255,0.1); border-radius:6px;">👤 ${j.name} (Listo)</div>`).join('');
                 }
 
-                // El chat solo se habilita cuando los jugadores ya están en la sala
+                // El chat solo se habilita cuando alguien entra a la sala (al menos 2 jugadores)
                 if (window.ChatManager) {
-                    const enSalaConRivales = (sala.jugadores && sala.jugadores.length >= 2) || (sala.estado === 'jugando');
-                    window.ChatManager.habilitarChat(enSalaConRivales, res.codigo);
+                    const alguienEntro = Boolean(sala.jugadores && sala.jugadores.length >= 2);
+                    window.ChatManager.habilitarChat(alguienEntro, res.codigo);
                 }
             }, (accion) => {
                 procesarAccionRemota(accion);
@@ -2044,7 +2095,8 @@ document.getElementById('btn-host-iniciar').addEventListener('click', async () =
     actualizarVisibilidadSalir(true);
 
     if (window.ChatManager && window.FirebaseManager) {
-        window.ChatManager.habilitarChat(true, window.FirebaseManager.getCodigoSala());
+        const alguienEntro = Boolean(engine.players.length >= 2 && !engine.players[1]?.isBot);
+        window.ChatManager.habilitarChat(alguienEntro, window.FirebaseManager.getCodigoSala());
     }
 
     await window.FirebaseManager.iniciarPartidaOnline(engine);
@@ -2120,7 +2172,7 @@ document.getElementById('btn-confirmar-unirse').addEventListener('click', async 
             }
 
             if (window.ChatManager) {
-                const enSalaConRivales = (sala.jugadores && sala.jugadores.length >= 2) || (sala.estado === 'jugando');
+                const enSalaConRivales = Boolean(sala.jugadores && sala.jugadores.length >= 2);
                 window.ChatManager.habilitarChat(enSalaConRivales, code);
             }
 
@@ -2129,7 +2181,8 @@ document.getElementById('btn-confirmar-unirse').addEventListener('click', async 
                 document.getElementById('start-screen').style.display = 'none';
                 actualizarVisibilidadSalir(true);
                 if (window.ChatManager) {
-                    window.ChatManager.habilitarChat(true, code);
+                    const enSalaConRivales = Boolean(sala.jugadores && sala.jugadores.length >= 2);
+                    window.ChatManager.habilitarChat(enSalaConRivales, code);
                 }
                 aplicarEstadoJuegoRemoto(sala.estadoJuego);
             } else if (sala.estado === 'finalizado') {
@@ -2221,7 +2274,8 @@ window.addEventListener('resize', ajustarEscalaResponsiva);
 window.addEventListener('orientationchange', ajustarEscalaResponsiva);
 ajustarEscalaResponsiva();
 
-// Inicializar Gestor de Chat y Llamadas de Voz
+// Inicializar Gestor de Chat y Llamadas de Voz (oculto por defecto)
 if (window.ChatManager) {
     window.ChatManager.init();
+    window.ChatManager.habilitarChat(false);
 }
