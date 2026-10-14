@@ -1,6 +1,6 @@
 // sw.js - Service Worker para Conga Uruguaya Offline PWA
 
-const CACHE_NAME = 'conga-uruguaya-v7';
+const CACHE_NAME = 'conga-uruguaya-v8';
 const PRECACHE_ASSETS = [
     './',
     './index.html',

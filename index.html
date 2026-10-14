@@ -99,6 +99,15 @@
         </div>
         <p class="hero-subtitle">El auténtico juego criollo de cartas españolas. Forma escaleras, piernas y corta con menos de 5 puntos o haz Conga.</p>
 
+        <!-- Selector de Apodo estilo Poker -->
+        <div class="lobby-nickname-container" id="lobby-nickname-container">
+            <div class="lobby-nickname-card">
+                <span class="nickname-icon">👤</span>
+                <label for="input-lobby-nombre" class="nickname-label">Tu Apodo en la Mesa:</label>
+                <input type="text" id="input-lobby-nombre" placeholder="Escribe tu apodo..." maxlength="15" value="TÚ" autocomplete="off" spellcheck="false">
+            </div>
+        </div>
+
         <div class="menu-options-grid">
             <button id="btn-start-1v1" class="menu-btn primary">🤖 Jugar 1 vs 1 (Contra IA)</button>
             <button id="btn-start-4p" class="menu-btn">👥 4 Jugadores (Todos vs Todos)</button>
@@ -290,11 +299,23 @@
                 <button class="modal-close-btn" data-close="modal-sala">&times;</button>
             </div>
             <div class="modal-body" id="modal-sala-body">
-                <div id="form-unirse-sala" style="display:none; flex-direction:column; gap:12px;">
-                    <label>Ingresa el Código de Sala (Ej: CG-A89F):</label>
-                    <input type="text" id="input-codigo-sala" placeholder="CG-XXXX" maxlength="10" style="padding:10px; font-size:1.1rem; text-transform:uppercase; text-align:center; border-radius:8px; border:2px solid var(--gold); background:#0a1a0f; color:#fff;">
-                    <button class="btn-action btn-primary-action" id="btn-confirmar-unirse" style="justify-content:center;">Entrar a la Sala</button>
+                <!-- Formulario Crear Sala Online -->
+                <div id="form-crear-sala" style="display:none; flex-direction:column; gap:12px; text-align:left;">
+                    <label style="font-size:0.9rem; color:#ddd; font-weight:bold;">👤 Tu Apodo / Nombre en la Mesa:</label>
+                    <input type="text" id="input-crear-nombre" placeholder="Ej: Anfitrión, Martín..." maxlength="15" style="padding:10px 14px; font-size:1rem; border-radius:8px; border:1px solid rgba(241, 196, 15, 0.5); background:#0a1a0f; color:#fff; font-weight:600;">
+                    <p style="font-size:0.8rem; color:#aaa; margin:0;">Elige el nombre con el que tus rivales te verán jugar en la mesa.</p>
+                    <button class="btn-action btn-primary-action" id="btn-confirmar-crear" style="justify-content:center; padding:12px; font-size:1rem; margin-top:4px;">🚀 Crear Sala y Esperar Rival</button>
                 </div>
+
+                <!-- Formulario Unirse a Sala Online -->
+                <div id="form-unirse-sala" style="display:none; flex-direction:column; gap:12px; text-align:left;">
+                    <label style="font-size:0.9rem; color:#ddd; font-weight:bold;">👤 Tu Apodo / Nombre en la Mesa:</label>
+                    <input type="text" id="input-unirse-nombre" placeholder="Ej: Invitado, Pedro..." maxlength="15" style="padding:10px 14px; font-size:1rem; border-radius:8px; border:1px solid rgba(241, 196, 15, 0.5); background:#0a1a0f; color:#fff; font-weight:600;">
+                    <label style="font-size:0.9rem; color:#ddd; font-weight:bold;">🔑 Código de Sala (Ej: CG-A89F):</label>
+                    <input type="text" id="input-codigo-sala" placeholder="CG-XXXX" maxlength="10" style="padding:10px; font-size:1.1rem; text-transform:uppercase; text-align:center; border-radius:8px; border:2px solid var(--gold); background:#0a1a0f; color:#fff; font-weight:bold; letter-spacing:1px;">
+                    <button class="btn-action btn-primary-action" id="btn-confirmar-unirse" style="justify-content:center; padding:12px; font-size:1rem;">Entrar a la Sala</button>
+                </div>
+
                 <div id="info-sala-espera" style="display:none; text-align:center;">
                     <div style="font-size:0.9rem; color:#ccc;">Código de Invitación:</div>
                     <div id="sala-codigo-display" style="font-size:2rem; font-weight:900; color:var(--gold); margin:8px 0; letter-spacing:2px;"></div>

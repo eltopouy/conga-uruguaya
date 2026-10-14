@@ -643,6 +643,100 @@ const assert = require('assert');
             await page.close();
         });
 
+        // TEST 16: Multijugador Online solicita nombre/apodo al crear o unirse a sala, y en la partida la leyenda muestra 'Rival' o el nombre elegido sin decir 'TÚ'
+        await runTest('Online solicita nombre estilo poker y la leyenda en mesa muestra Rival o el apodo elegido sin decir TÚ', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
+
+            // 1. Selector de apodo en el lobby
+            const lobbyNickInput = await page.$('#input-lobby-nombre');
+            assert(lobbyNickInput, 'Debe existir el input de apodo en el lobby');
+            await page.fill('#input-lobby-nombre', 'Martín_UY');
+            await page.waitForTimeout(100);
+
+            // 2. Al abrir Crear Sala, se pide el apodo prellenado
+            await page.click('#btn-crear-online');
+            await page.waitForTimeout(300);
+            const formCrearVisible = await page.isVisible('#form-crear-sala');
+            assert.strictEqual(formCrearVisible, true, 'El formulario para crear sala debe ser visible');
+            const crearNomVal = await page.inputValue('#input-crear-nombre');
+            assert.strictEqual(crearNomVal, 'Martín_UY', 'El apodo ingresado en el lobby debe sincronizarse en Crear Sala');
+
+            // Cerrar modal
+            await page.click('#modal-sala .modal-close-btn');
+            await page.waitForTimeout(200);
+
+            // 3. Al abrir Unirse a Sala, se pide el apodo y el código
+            await page.click('#btn-unirse-online');
+            await page.waitForTimeout(300);
+            const formUnirseVisible = await page.isVisible('#form-unirse-sala');
+            assert.strictEqual(formUnirseVisible, true, 'El formulario de unirse debe ser visible');
+            const unirseNomVal = await page.inputValue('#input-unirse-nombre');
+            assert.strictEqual(unirseNomVal, 'Martín_UY', 'El apodo debe sincronizarse en Unirse a Sala');
+            const codeInputExists = await page.$('#input-codigo-sala');
+            assert(codeInputExists, 'Debe existir el campo de código de sala');
+
+            // Cerrar modal
+            await page.click('#modal-sala .modal-close-btn');
+            await page.waitForTimeout(200);
+
+            // 4. Simulación de partida online con rival con nombre elegido ("Gonzalo")
+            await page.evaluate(() => {
+                window.modoJuego = 'multiplayer';
+                window.miSeat = 1; // El usuario local es el Invitado
+                window.miRol = 'invitado';
+                document.getElementById('start-screen').style.display = 'none';
+
+                window.aplicarEstadoJuegoRemoto({
+                    rondaActual: 1,
+                    turnoSeat: 0, // Turno del Anfitrión (Rival)
+                    fase: 'robar',
+                    deckCount: 35,
+                    discardPile: [{ valor: 1, palo: 'Espada', esComodin: false, id: 'c1' }],
+                    players: [
+                        { seat: 0, name: 'Gonzalo', hand: [{},{},{},{},{},{},{}], puntosAcumulados: 12 },
+                        { seat: 1, name: 'Martín_UY', hand: [{},{},{},{},{},{},{}], puntosAcumulados: 5 }
+                    ]
+                });
+            });
+            await page.waitForTimeout(300);
+
+            // La leyenda del banner debe decir "Turno de Gonzalo..." y NO "Turno de TÚ..."
+            const turnText = await page.innerText('#turn-text');
+            assert(turnText.includes('Gonzalo'), `La leyenda debe mencionar a Gonzalo, recibido: "${turnText}"`);
+            assert(!turnText.includes('TÚ'), `La leyenda NO debe decir TÚ cuando juega el rival, recibido: "${turnText}"`);
+
+            // La caja del rival debe decir Gonzalo
+            const oppNameText = await page.innerText('.opponent-name');
+            assert(oppNameText.includes('Gonzalo'), `El badge del oponente debe decir Gonzalo, recibido: "${oppNameText}"`);
+
+            // 5. Simulación cuando el rival no tiene nombre o tiene 'TÚ': debe decir 'Rival'
+            await page.evaluate(() => {
+                window.aplicarEstadoJuegoRemoto({
+                    rondaActual: 1,
+                    turnoSeat: 0,
+                    fase: 'robar',
+                    deckCount: 35,
+                    discardPile: [{ valor: 1, palo: 'Espada', esComodin: false, id: 'c1' }],
+                    players: [
+                        { seat: 0, name: 'TÚ', hand: [{},{},{},{},{},{},{}], puntosAcumulados: 0 },
+                        { seat: 1, name: 'Martín_UY', hand: [{},{},{},{},{},{},{}], puntosAcumulados: 0 }
+                    ]
+                });
+            });
+            await page.waitForTimeout(300);
+
+            const turnTextFallback = await page.innerText('#turn-text');
+            assert(turnTextFallback.includes('Rival'), `La leyenda debe decir 'Rival' si el rival no tiene nombre, recibido: "${turnTextFallback}"`);
+            assert(!turnTextFallback.includes('TÚ'), `La leyenda jamás debe decir 'TÚ' para el rival, recibido: "${turnTextFallback}"`);
+
+            const oppNameFallback = await page.innerText('.opponent-name');
+            assert(oppNameFallback.includes('Rival'), `El badge del oponente debe decir 'Rival', recibido: "${oppNameFallback}"`);
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }

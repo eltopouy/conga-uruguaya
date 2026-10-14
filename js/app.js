@@ -15,36 +15,97 @@ let autoAdvanceInterval = null;
 let isBotThinking = false;
 let lastCardTapTracker = { cardId: null, timestamp: 0 };
 
+Object.defineProperty(window, 'miSeat', {
+    get: () => miSeat,
+    set: (val) => { miSeat = val; },
+    configurable: true
+});
+Object.defineProperty(window, 'modoJuego', {
+    get: () => modoJuego,
+    set: (val) => { modoJuego = val; },
+    configurable: true
+});
+Object.defineProperty(window, 'miRol', {
+    get: () => miRol,
+    set: (val) => { miRol = val; },
+    configurable: true
+});
+
 // Helpers de sonido
 function playSound(name) {
     if (sound) sound.play(name);
 }
 
 // -------------------------------------------------------------
-// INICIALIZACIÓN Y CONFIGURACIÓN
+// INICIALIZACIÓN Y CONFIGURACIÓN (GESTIÓN DE APODO ESTILO POKER)
 // -------------------------------------------------------------
+function getPlayerNickname() {
+    let name = engine.config.nombreJugador;
+    try {
+        const stored = localStorage.getItem('conga_nickname');
+        if (stored && stored.trim()) name = stored.trim();
+    } catch(e) {}
+    if (!name || name.trim() === '' || name.trim().toUpperCase() === 'TÚ') {
+        return 'TÚ';
+    }
+    return name.trim();
+}
+
+function setPlayerNickname(newName) {
+    if (!newName) return;
+    const clean = newName.trim();
+    if (!clean) return;
+    engine.config.nombreJugador = clean;
+    try {
+        localStorage.setItem('conga_nickname', clean);
+        const saved = localStorage.getItem('conga_config');
+        const cfg = saved ? JSON.parse(saved) : {};
+        cfg.nombreJugador = clean;
+        localStorage.setItem('conga_config', JSON.stringify(cfg));
+    } catch(e) {}
+
+    // Sincronizar todos los inputs en la UI
+    ['input-lobby-nombre', 'input-crear-nombre', 'input-unirse-nombre', 'cfg-nombre'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value !== clean) el.value = clean;
+    });
+
+    if (engine && engine.players && engine.players[miSeat]) {
+        engine.players[miSeat].name = clean;
+    }
+}
+
 function cargarConfigLocal() {
     try {
+        let nick = localStorage.getItem('conga_nickname');
         const saved = localStorage.getItem('conga_config');
         if (saved) {
             const parsed = JSON.parse(saved);
             engine.config = { ...engine.config, ...parsed };
-            const cfgName = document.getElementById('cfg-nombre');
-            const cfgLim = document.getElementById('cfg-limite-puntos');
-            const cfgDeck = document.getElementById('cfg-deck-size');
-            const cfgJokers = document.getElementById('cfg-comodines');
-            const cfgSound = document.getElementById('cfg-sonido');
-            const cfgPoints = document.getElementById('cfg-mostrar-puntos');
-            if (cfgName) cfgName.value = engine.config.nombreJugador || 'TÚ';
-            if (cfgLim) cfgLim.value = engine.config.limitePuntos || 100;
-            if (cfgDeck) cfgDeck.value = engine.config.deckSize || 48;
-            if (cfgJokers) cfgJokers.checked = engine.config.conComodines !== false;
-            if (cfgSound) cfgSound.checked = !sound.muted;
-            if (cfgPoints) cfgPoints.checked = engine.config.mostrarPuntosCartas === true;
-        } else {
-            const cfgPoints = document.getElementById('cfg-mostrar-puntos');
-            if (cfgPoints) cfgPoints.checked = false;
+            if (!nick && parsed.nombreJugador) nick = parsed.nombreJugador;
         }
+        if (nick && nick.trim()) {
+            engine.config.nombreJugador = nick.trim();
+        } else if (!engine.config.nombreJugador) {
+            engine.config.nombreJugador = 'TÚ';
+        }
+
+        const currentNick = engine.config.nombreJugador;
+        ['input-lobby-nombre', 'input-crear-nombre', 'input-unirse-nombre', 'cfg-nombre'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = currentNick;
+        });
+
+        const cfgLim = document.getElementById('cfg-limite-puntos');
+        const cfgDeck = document.getElementById('cfg-deck-size');
+        const cfgJokers = document.getElementById('cfg-comodines');
+        const cfgSound = document.getElementById('cfg-sonido');
+        const cfgPoints = document.getElementById('cfg-mostrar-puntos');
+        if (cfgLim) cfgLim.value = engine.config.limitePuntos || 100;
+        if (cfgDeck) cfgDeck.value = engine.config.deckSize || 48;
+        if (cfgJokers) cfgJokers.checked = engine.config.conComodines !== false;
+        if (cfgSound) cfgSound.checked = !sound.muted;
+        if (cfgPoints) cfgPoints.checked = engine.config.mostrarPuntosCartas === true;
     } catch (e) {}
 }
 
@@ -57,7 +118,7 @@ function guardarConfigLocal() {
         const cfgSound = document.getElementById('cfg-sonido').checked;
         const cfgPoints = document.getElementById('cfg-mostrar-puntos') ? document.getElementById('cfg-mostrar-puntos').checked : false;
 
-        engine.config.nombreJugador = cfgName;
+        setPlayerNickname(cfgName);
         engine.config.limitePuntos = cfgLim;
         engine.config.deckSize = cfgDeck;
         engine.config.conComodines = cfgJokers;
@@ -381,8 +442,14 @@ function renderJuego() {
                     }
                 }
 
+                // Determinación limpia del nombre del rival (evita mostrar "TÚ" en la caja del oponente)
+                let opponentDisplayName = p.name;
+                if (!opponentDisplayName || opponentDisplayName.trim() === '' || opponentDisplayName.trim().toUpperCase() === 'TÚ') {
+                    opponentDisplayName = (modoJuego === 'multiplayer') ? 'Rival' : `Bot ${p.seat === 1 ? 'Tatú' : (p.seat === 2 ? 'Gaucho' : 'Pampero')}`;
+                }
+
                 badge.innerHTML = `
-                    <div class="opponent-name">${p.name} ${p.eliminado ? '💀 (Eliminado)' : ''}</div>
+                    <div class="opponent-name">${opponentDisplayName} ${p.eliminado ? '💀 (Eliminado)' : ''}</div>
                     <div class="opponent-score">${p.puntosAcumulados} pts</div>
                     <div class="opponent-cards-mini">${miniCardsHTML}</div>
                 `;
@@ -436,14 +503,19 @@ function renderJuego() {
             const containerEl = document.getElementById('table-melds-container');
 
             if (titleEl) {
+                let cortadorNom = corte.cortadorNombre;
+                if (!cortadorNom || cortadorNom.trim() === '' || cortadorNom.trim().toUpperCase() === 'TÚ') {
+                    cortadorNom = (corte.cortadorSeat === miSeat) ? 'Tú' : 'el Rival';
+                }
+                const sufijo = (corte.cortadorSeat === miSeat) ? 'Tuyo' : `de ${cortadorNom}`;
                 if (corte.esCongaLimpia) {
-                    titleEl.innerText = `🏆 ¡CONGA LIMPIA de ${corte.cortadorNombre}! (7 cartas del mismo palo)`;
+                    titleEl.innerText = `🏆 ¡CONGA LIMPIA ${sufijo}! (7 cartas del mismo palo)`;
                 } else if (corte.esCongaConComodin) {
-                    titleEl.innerText = `🔥 ¡CONGA de ${corte.cortadorNombre}! (con Comodín)`;
+                    titleEl.innerText = `🔥 ¡CONGA ${sufijo}! (con Comodín)`;
                 } else if (corte.esCorteCero) {
-                    titleEl.innerText = `⭐ ¡Corte con 0 Puntos de ${corte.cortadorNombre}!`;
+                    titleEl.innerText = `⭐ ¡Corte con 0 Puntos ${sufijo}!`;
                 } else {
-                    titleEl.innerText = `✂️ Corte de ${corte.cortadorNombre} (con ${corte.puntosSueltos} pts)`;
+                    titleEl.innerText = `✂️ Corte ${sufijo} (con ${corte.puntosSueltos} pts)`;
                 }
             }
 
@@ -563,6 +635,10 @@ function renderJuego() {
             banner.title = "Haz clic aquí para ver los resultados de la ronda";
             const corte = engine.corteInfo;
             if (corte) {
+                let cortadorNom = corte.cortadorNombre;
+                if (!cortadorNom || cortadorNom.trim() === '' || cortadorNom.trim().toUpperCase() === 'TÚ') {
+                    cortadorNom = (corte.cortadorSeat === miSeat) ? 'Tú' : 'El rival';
+                }
                 if (corte.cortadorSeat === miSeat) {
                     banner.classList.add('my-turn');
                     turnIcon.innerText = "✂️";
@@ -573,11 +649,11 @@ function renderJuego() {
                     const tieneColocables = myPlayer && myPlayer.hand.some(c => engine.puedeColocarCarta(miSeat, c.id));
                     turnText.innerHTML = tieneColocables 
                         ? `¡Coloca tus cartas! Toca las cartas destacadas o pulsa <span class="banner-action-pill">📊 Ver Resultados ➔</span>`
-                        : `${corte.cortadorNombre} cortó con ${corte.puntosSueltos} pts. <span class="banner-action-pill">📊 Ver Resultados ➔</span>`;
+                        : `${cortadorNom} cortó con ${corte.puntosSueltos} pts. <span class="banner-action-pill">📊 Ver Resultados ➔</span>`;
                 } else {
                     banner.classList.remove('my-turn');
                     turnIcon.innerText = "⭐";
-                    turnText.innerHTML = `${corte.cortadorNombre} cortó con 0 o Conga. <span class="banner-action-pill">📊 Ver Resultados ➔</span>`;
+                    turnText.innerHTML = `${cortadorNom} cortó con 0 o Conga. <span class="banner-action-pill">📊 Ver Resultados ➔</span>`;
                 }
             }
         } else {
@@ -599,7 +675,14 @@ function renderJuego() {
                 banner.classList.remove('my-turn');
                 turnIcon.innerText = "⏳";
                 const activePlayer = engine.players[engine.turnoSeat];
-                turnText.innerText = `Turno de ${activePlayer ? activePlayer.name : 'Rival'}...`;
+                let nombreTurno = 'Rival';
+                if (activePlayer && activePlayer.name) {
+                    const rawName = activePlayer.name.trim();
+                    if (rawName && rawName.toUpperCase() !== 'TÚ') {
+                        nombreTurno = rawName;
+                    }
+                }
+                turnText.innerText = `Turno de ${nombreTurno}...`;
             }
         }
     }
@@ -1324,7 +1407,13 @@ function mostrarModalFinRonda() {
         title.innerText = "📦 Mazo agotado - Fin de Ronda";
     } else {
         const cortador = engine.players[res.cortadorSeat];
-        title.innerText = `✂️ ${cortador ? cortador.name : 'Un jugador'} ha cortado la ronda`;
+        let cortadorNom = cortador ? cortador.name : 'Un jugador';
+        if (!cortadorNom || cortadorNom.trim() === '' || cortadorNom.trim().toUpperCase() === 'TÚ') {
+            cortadorNom = (res.cortadorSeat === miSeat) ? 'Tú' : 'El rival';
+        }
+        title.innerText = (res.cortadorSeat === miSeat)
+            ? `✂️ Cortaste la ronda`
+            : `✂️ ${cortadorNom} ha cortado la ronda`;
     }
 
     let html = '';
@@ -1357,10 +1446,17 @@ function mostrarModalFinRonda() {
             unmeldedHTML += `</div></div>`;
         }
 
+        let displayName = d.name;
+        if (d.seat === miSeat) {
+            displayName = `${d.name || 'Tú'} (Tú)`;
+        } else if (!displayName || displayName.trim() === '' || displayName.trim().toUpperCase() === 'TÚ') {
+            displayName = (modoJuego === 'multiplayer') ? 'Rival' : `Bot ${d.seat === 1 ? 'Tatú' : (d.seat === 2 ? 'Gaucho' : 'Pampero')}`;
+        }
+
         html += `
             <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:12px; margin-bottom:8px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <strong style="color:var(--gold); font-size:1.05rem;">${d.name}</strong>
+                    <strong style="color:var(--gold); font-size:1.05rem;">${displayName}</strong>
                     <span style="font-weight:bold; font-size:1.1rem; color:${d.puntosRonda <= 0 ? '#2ecc71' : '#e74c3c'};">
                         ${d.puntosRonda > 0 ? '+' : ''}${d.puntosRonda} Pts
                     </span>
@@ -1546,10 +1642,16 @@ document.getElementById('btn-marcador').addEventListener('click', () => {
     if (tbody && engine) {
         tbody.innerHTML = '';
         engine.players.forEach(p => {
+            let pDisplayName = p.name;
+            if (p.seat === miSeat) {
+                pDisplayName = `${p.name || 'Tú'} (Tú)`;
+            } else if (!pDisplayName || pDisplayName.trim() === '' || pDisplayName.trim().toUpperCase() === 'TÚ') {
+                pDisplayName = (modoJuego === 'multiplayer') ? 'Rival' : `Bot ${p.seat === 1 ? 'Tatú' : (p.seat === 2 ? 'Gaucho' : 'Pampero')}`;
+            }
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
             tr.innerHTML = `
-                <td style="padding:10px; font-weight:bold;">${p.name}</td>
+                <td style="padding:10px; font-weight:bold;">${pDisplayName}</td>
                 <td style="padding:10px; font-size:1.1rem; color:${p.puntosAcumulados > 80 ? '#e74c3c' : 'var(--gold)'};">${p.puntosAcumulados} / ${engine.config.limitePuntos}</td>
                 <td style="padding:10px;">${p.eliminado ? '💀 Eliminado' : '🟢 En Juego'}</td>
             `;
@@ -1699,42 +1801,74 @@ function aplicarEstadoJuegoRemoto(estadoJuego) {
 
     renderJuego();
 }
+window.aplicarEstadoJuegoRemoto = aplicarEstadoJuegoRemoto;
 
-// Multijugador Online: Crear Sala
-document.getElementById('btn-crear-online').addEventListener('click', async () => {
+// Multijugador Online: Abrir Modal Crear Sala
+document.getElementById('btn-crear-online').addEventListener('click', () => {
     if (!window.FirebaseManager || !window.FirebaseManager.isAvailable()) {
         alert("Firebase no está conectado. Revisa tu conexión a internet.");
         return;
     }
-    try {
-        const nombre = engine.config.nombreJugador || "Anfitrión";
-        const res = await window.FirebaseManager.crearSala(nombre, 2, true, engine.config);
-        miSeat = 0;
-        miRol = 'creador';
-        modoJuego = 'multiplayer';
-        
-        document.getElementById('form-unirse-sala').style.display = 'none';
-        document.getElementById('info-sala-espera').style.display = 'block';
-        document.getElementById('sala-codigo-display').innerText = res.codigo;
-        document.getElementById('btn-host-iniciar').style.display = 'block';
-        
-        document.getElementById('room-code-tag').innerText = res.codigo;
-        document.getElementById('room-code-tag').style.display = 'inline-block';
-
-        abrirModal('modal-sala');
-
-        window.FirebaseManager.escucharSala((sala) => {
-            const lista = document.getElementById('sala-lista-jugadores');
-            if (lista && sala.jugadores) {
-                lista.innerHTML = sala.jugadores.map(j => `<div style="padding:6px; background:rgba(255,255,255,0.1); border-radius:6px;">👤 ${j.name} (Listo)</div>`).join('');
-            }
-        }, (accion) => {
-            procesarAccionRemota(accion);
-        });
-    } catch(err) {
-        alert("Error creando sala: " + err.message);
+    const modalTitle = document.getElementById('modal-sala-title');
+    if (modalTitle) modalTitle.innerText = "🌐 Crear Sala Online";
+    document.getElementById('form-crear-sala').style.display = 'flex';
+    document.getElementById('form-unirse-sala').style.display = 'none';
+    document.getElementById('info-sala-espera').style.display = 'none';
+    const crearInput = document.getElementById('input-crear-nombre');
+    if (crearInput) {
+        crearInput.value = (engine.config.nombreJugador && engine.config.nombreJugador !== 'TÚ') ? engine.config.nombreJugador : '';
+        crearInput.focus();
     }
+    abrirModal('modal-sala');
 });
+
+// Confirmar Crear Sala (Host)
+const btnConfirmarCrear = document.getElementById('btn-confirmar-crear');
+if (btnConfirmarCrear) {
+    btnConfirmarCrear.addEventListener('click', async () => {
+        if (!window.FirebaseManager || !window.FirebaseManager.isAvailable()) {
+            alert("Firebase no está conectado. Revisa tu conexión a internet.");
+            return;
+        }
+        const inputNom = document.getElementById('input-crear-nombre');
+        let nombre = inputNom ? inputNom.value.trim() : '';
+        if (!nombre || nombre.toUpperCase() === 'TÚ') {
+            nombre = (engine.config.nombreJugador && engine.config.nombreJugador.toUpperCase() !== 'TÚ') 
+                ? engine.config.nombreJugador 
+                : 'Anfitrión';
+        }
+        setPlayerNickname(nombre);
+
+        try {
+            const res = await window.FirebaseManager.crearSala(nombre, 2, true, engine.config);
+            miSeat = 0;
+            miRol = 'creador';
+            modoJuego = 'multiplayer';
+
+            const modalTitle = document.getElementById('modal-sala-title');
+            if (modalTitle) modalTitle.innerText = "🌐 Sala de Espera";
+            document.getElementById('form-crear-sala').style.display = 'none';
+            document.getElementById('form-unirse-sala').style.display = 'none';
+            document.getElementById('info-sala-espera').style.display = 'block';
+            document.getElementById('sala-codigo-display').innerText = res.codigo;
+            document.getElementById('btn-host-iniciar').style.display = 'block';
+            
+            document.getElementById('room-code-tag').innerText = res.codigo;
+            document.getElementById('room-code-tag').style.display = 'inline-block';
+
+            window.FirebaseManager.escucharSala((sala) => {
+                const lista = document.getElementById('sala-lista-jugadores');
+                if (lista && sala.jugadores) {
+                    lista.innerHTML = sala.jugadores.map(j => `<div style="padding:6px; background:rgba(255,255,255,0.1); border-radius:6px;">👤 ${j.name} (Listo)</div>`).join('');
+                }
+            }, (accion) => {
+                procesarAccionRemota(accion);
+            });
+        } catch(err) {
+            alert("Error creando sala: " + err.message);
+        }
+    });
+}
 
 // Host hace click en Iniciar Partida
 document.getElementById('btn-host-iniciar').addEventListener('click', async () => {
@@ -1752,22 +1886,58 @@ document.getElementById('btn-host-iniciar').addEventListener('click', async () =
 
 // Unirse con Código
 document.getElementById('btn-unirse-online').addEventListener('click', () => {
+    const modalTitle = document.getElementById('modal-sala-title');
+    if (modalTitle) modalTitle.innerText = "🔑 Unirse a Sala Online";
+    document.getElementById('form-crear-sala').style.display = 'none';
     document.getElementById('form-unirse-sala').style.display = 'flex';
     document.getElementById('info-sala-espera').style.display = 'none';
+    const unirseInput = document.getElementById('input-unirse-nombre');
+    if (unirseInput) {
+        unirseInput.value = (engine.config.nombreJugador && engine.config.nombreJugador !== 'TÚ') ? engine.config.nombreJugador : '';
+    }
+    const codeInput = document.getElementById('input-codigo-sala');
+    if (codeInput) codeInput.value = '';
     abrirModal('modal-sala');
 });
+
+// Unirse a una sala pública desde el lobby
+window.unirseDesdeListaPublica = function(codigo) {
+    const modalTitle = document.getElementById('modal-sala-title');
+    if (modalTitle) modalTitle.innerText = "🔑 Unirse a Sala Online";
+    document.getElementById('form-crear-sala').style.display = 'none';
+    document.getElementById('form-unirse-sala').style.display = 'flex';
+    document.getElementById('info-sala-espera').style.display = 'none';
+    document.getElementById('input-codigo-sala').value = codigo;
+    const unirseInput = document.getElementById('input-unirse-nombre');
+    if (unirseInput) {
+        unirseInput.value = (engine.config.nombreJugador && engine.config.nombreJugador !== 'TÚ') ? engine.config.nombreJugador : '';
+    }
+    abrirModal('modal-sala');
+};
 
 document.getElementById('btn-confirmar-unirse').addEventListener('click', async () => {
     const code = document.getElementById('input-codigo-sala').value.trim();
     if (!code) return alert("Por favor ingresa un código válido.");
+
+    const inputNom = document.getElementById('input-unirse-nombre');
+    let nombre = inputNom ? inputNom.value.trim() : '';
+    if (!nombre || nombre.toUpperCase() === 'TÚ') {
+        nombre = (engine.config.nombreJugador && engine.config.nombreJugador.toUpperCase() !== 'TÚ') 
+            ? engine.config.nombreJugador 
+            : 'Invitado';
+    }
+    setPlayerNickname(nombre);
+
     try {
-        const nombre = engine.config.nombreJugador || "Invitado";
         const res = await window.FirebaseManager.unirseSala(code, nombre);
         
         modoJuego = 'multiplayer';
         miSeat = res.seat;
         miRol = 'invitado';
 
+        const modalTitle = document.getElementById('modal-sala-title');
+        if (modalTitle) modalTitle.innerText = "🌐 Sala de Espera";
+        document.getElementById('form-crear-sala').style.display = 'none';
         document.getElementById('form-unirse-sala').style.display = 'none';
         document.getElementById('info-sala-espera').style.display = 'block';
         document.getElementById('sala-codigo-display').innerText = code;
@@ -1808,11 +1978,19 @@ if (window.FirebaseManager && window.FirebaseManager.isAvailable()) {
         container.innerHTML = salas.map(s => `
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.08); padding:8px 12px; border-radius:8px;">
                 <div><strong>${s.codigo}</strong> (${s.creador})</div>
-                <button class="btn-icon" onclick="document.getElementById('input-codigo-sala').value='${s.codigo}'; document.getElementById('btn-confirmar-unirse').click();" style="padding:4px 10px; font-size:0.8rem;">Entrar</button>
+                <button class="btn-icon" onclick="window.unirseDesdeListaPublica('${s.codigo}')" style="padding:4px 10px; font-size:0.8rem;">Entrar</button>
             </div>
         `).join('');
     });
 }
+
+// Sincronización en vivo de campos de Apodo
+['input-lobby-nombre', 'input-crear-nombre', 'input-unirse-nombre', 'cfg-nombre'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener('input', (e) => setPlayerNickname(e.target.value));
+    }
+});
 
 // -------------------------------------------------------------
 // ATAJOS DE TECLADO

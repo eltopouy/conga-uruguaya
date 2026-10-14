@@ -741,8 +741,60 @@ body {
 .hero-subtitle {
     font-size: 1rem;
     color: rgba(255, 255, 255, 0.8);
-    margin-bottom: 28px;
+    margin-bottom: 20px;
     max-width: 440px;
+}
+
+/* Selector de Apodo en el Lobby (Estilo Poker) */
+.lobby-nickname-container {
+    margin-bottom: 18px;
+    width: 100%;
+    max-width: 380px;
+}
+
+.lobby-nickname-card {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1.5px solid rgba(241, 196, 15, 0.5);
+    border-radius: 12px;
+    padding: 8px 14px;
+    gap: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.lobby-nickname-card:focus-within {
+    border-color: var(--gold);
+    box-shadow: 0 0 15px rgba(241, 196, 15, 0.4);
+}
+
+.nickname-icon {
+    font-size: 1.15rem;
+}
+
+.nickname-label {
+    font-size: 0.85rem;
+    color: var(--gold);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+#input-lobby-nombre {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 700;
+    outline: none;
+    text-align: left;
+    min-width: 60px;
+}
+
+#input-lobby-nombre::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 400;
 }
 
 .menu-options-grid {
