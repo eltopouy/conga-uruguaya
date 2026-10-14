@@ -165,4 +165,15 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { SoundManager };
 } else {
     window.SoundManager = SoundManager;
+
+    if (typeof window !== 'undefined') {
+        const unlockAudio = () => {
+            if (window.sound && typeof window.sound.unlock === 'function') {
+                window.sound.unlock();
+            }
+        };
+        window.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
+        window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+        window.addEventListener('keydown', unlockAudio, { once: true, passive: true });
+    }
 }

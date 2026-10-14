@@ -86,12 +86,14 @@ class CongaEngine {
         this.ultimoCortador = null;
         this.resultadoRonda = null;
         this.historialRondas = [];
+        this.partidaToken = 1;
     }
 
     configurarPartida(numJugadores = 2, configOverrides = {}) {
         this.numJugadores = Math.max(2, Math.min(4, numJugadores));
         this.config = { ...this.config, ...configOverrides };
         this.players = [];
+        this.partidaToken++;
         
         for (let i = 0; i < this.numJugadores; i++) {
             const isBot = (i !== 0);
@@ -173,8 +175,10 @@ class CongaEngine {
 
         // Turno inicial: empieza el mano de la ronda
         this.turnoSeat = this.manoSeat;
-        while (this.players[this.turnoSeat].eliminado) {
+        let startAttempts = 0;
+        while (this.players[this.turnoSeat].eliminado && startAttempts < this.numJugadores) {
             this.turnoSeat = (this.turnoSeat + 1) % this.numJugadores;
+            startAttempts++;
         }
 
         // Actualizar melds de cada jugador
@@ -259,10 +263,62 @@ class CongaEngine {
     avanzarTurno() {
         this.fase = 'robar';
         let nextSeat = (this.turnoSeat + 1) % this.numJugadores;
-        while (this.players[nextSeat].eliminado) {
+        let attempts = 0;
+        while (this.players[nextSeat].eliminado && attempts < this.numJugadores) {
             nextSeat = (nextSeat + 1) % this.numJugadores;
+            attempts++;
         }
         this.turnoSeat = nextSeat;
+    }
+
+    // Ordena visualmente las cartas de una combinación (escalera o pierna) en orden natural
+    ordenarMeld(meld) {
+        if (!meld || meld.length === 0) return meld;
+
+        const comodines = meld.filter(c => c.esComodin);
+        const naturales = meld.filter(c => !c.esComodin);
+
+        // Si es una pierna (mismo valor, distintos palos):
+        const esPierna = naturales.length > 0 && naturales.every(c => c.valor === naturales[0].valor);
+        if (esPierna) {
+            return [...naturales, ...comodines];
+        }
+
+        // Si es una escalera (mismo palo, correlativas):
+        const es40 = (this.config.deckSize === 40);
+        const VALORES_40 = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12];
+        const getRank = (val) => {
+            if (!es40) return val;
+            const idx = VALORES_40.indexOf(val);
+            return idx !== -1 ? idx + 1 : val;
+        };
+
+        naturales.sort((a, b) => getRank(a.valor) - getRank(b.valor));
+
+        if (comodines.length === 0) {
+            return naturales;
+        }
+
+        const resultado = [];
+        let comodinesRestantes = [...comodines];
+
+        for (let i = 0; i < naturales.length; i++) {
+            if (i > 0) {
+                const prevRank = getRank(naturales[i - 1].valor);
+                const currRank = getRank(naturales[i].valor);
+                const huecos = currRank - prevRank - 1;
+                for (let h = 0; h < huecos && comodinesRestantes.length > 0; h++) {
+                    resultado.push(comodinesRestantes.shift());
+                }
+            }
+            resultado.push(naturales[i]);
+        }
+
+        while (comodinesRestantes.length > 0) {
+            resultado.push(comodinesRestantes.shift());
+        }
+
+        return resultado;
     }
 
     // -------------------------------------------------------------
@@ -345,7 +401,7 @@ class CongaEngine {
         if (cards.length === 7 && this.esEscaleraValida(cards)) {
             const tieneComodin = cards.some(c => c.esComodin);
             return {
-                melds: [cards],
+                melds: [this.ordenarMeld([...cards])],
                 unmelded: [],
                 puntosSueltos: 0,
                 esConga: true,
@@ -406,7 +462,7 @@ class CongaEngine {
             }
             const unmelded = cards.filter((_, idx) => !usados.has(idx));
             const puntosSueltos = unmelded.reduce((sum, c) => sum + c.getPuntosSueltos(), 0);
-            const meldsCartas = meldsArr.map(m => m.cartas);
+            const meldsCartas = meldsArr.map(m => this.ordenarMeld([...m.cartas]));
 
             const esCorteCero = (unmelded.length === 0);
 
@@ -566,12 +622,14 @@ class CongaEngine {
         if (!carta) return false;
 
         cortador.melds[fit.meldIndex].push(carta);
+        cortador.melds[fit.meldIndex] = this.ordenarMeld(cortador.melds[fit.meldIndex]);
 
-        // Mantener corteInfo.melds sincronizado para la UI
+        // Mantener corteInfo.melds sincronizado y ordenado para la UI
         if (this.corteInfo && this.corteInfo.melds && this.corteInfo.melds[fit.meldIndex]) {
             if (!this.corteInfo.melds[fit.meldIndex].some(c => c.id === carta.id)) {
                 this.corteInfo.melds[fit.meldIndex].push(carta);
             }
+            this.corteInfo.melds[fit.meldIndex] = this.ordenarMeld(this.corteInfo.melds[fit.meldIndex]);
         }
 
         if (!this.cartasAcomodadas) this.cartasAcomodadas = [];
@@ -762,8 +820,10 @@ class CongaEngine {
         // Si el partido no terminó, rotar el mano para la siguiente ronda
         if (!this.partidoFinalizado) {
             this.manoSeat = (this.manoSeat + 1) % this.numJugadores;
-            while (this.players[this.manoSeat].eliminado) {
+            let manoAttempts = 0;
+            while (this.players[this.manoSeat].eliminado && manoAttempts < this.numJugadores) {
                 this.manoSeat = (this.manoSeat + 1) % this.numJugadores;
+                manoAttempts++;
             }
         }
     }
@@ -804,8 +864,10 @@ class CongaEngine {
 
         if (!this.partidoFinalizado) {
             this.manoSeat = (this.manoSeat + 1) % this.numJugadores;
-            while (this.players[this.manoSeat].eliminado) {
+            let manoAttempts = 0;
+            while (this.players[this.manoSeat].eliminado && manoAttempts < this.numJugadores) {
                 this.manoSeat = (this.manoSeat + 1) % this.numJugadores;
+                manoAttempts++;
             }
         }
     }
@@ -843,7 +905,10 @@ class CongaEngine {
 
     // Reenganche: permite volver a entrar al juego con el puntaje del jugador que va peor
     puedeReenganchar(seat) {
-        if (!this.config.permitirReenganche || this.partidoFinalizado) return false;
+        if (!this.config.permitirReenganche) return false;
+        // Si el partido finalizó por Conga Limpia, no hay reenganche (victoria absoluta directa)
+        if (this.resultadoRonda && this.resultadoRonda.victoriaDirecta) return false;
+
         const p = this.players[seat];
         if (!p || !p.eliminado || p.reenganches >= 1) return false;
 
@@ -863,7 +928,7 @@ class CongaEngine {
         p.eliminado = false;
         p.reenganches += 1;
 
-        // Si solo quedaba 1 jugador y se canceló la finalización
+        // Si solo quedaba 1 jugador y se canceló la finalización del partido
         this.partidoFinalizado = false;
         this.ganadorPartido = null;
 
@@ -875,10 +940,9 @@ class CongaEngine {
         const analysis = this.detectarMejoresMelds(cards);
         const organizadas = [];
         
-        // Agregar cartas de los melds en orden
+        // Agregar cartas de los melds ordenadas secuencialmente
         analysis.melds.forEach(m => {
-            // Ordenar meld por valor ascendente
-            const sortedMeld = [...m].sort((a, b) => (a.esComodin ? -1 : a.valor) - (b.esComodin ? -1 : b.valor));
+            const sortedMeld = this.ordenarMeld(m);
             organizadas.push(...sortedMeld);
         });
 

@@ -393,6 +393,59 @@ const assert = require('assert');
             await page.close();
         });
 
+        // TEST 12: Reenganche en 1 vs 1 muestra botón y reengancha al jugador al partido
+        await runTest('Reenganche en 1 vs 1 muestra botón y permite reenganchar al jugador', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
+
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(500);
+
+            // Simular eliminación del jugador humano (105 pts) vs Bot Tatú (65 pts)
+            const result = await page.evaluate(() => {
+                window.engine.players[0].puntosAcumulados = 105;
+                window.engine.players[1].puntosAcumulados = 65;
+                window.engine.verificarEliminaciones();
+                window.engine.fase = 'fin_ronda';
+                window.engine.resultadoRonda = {
+                    ronda: 1,
+                    cortadorSeat: 1,
+                    detalles: [
+                        { seat: 1, name: 'Bot Tatú', puntosRonda: 5, motivo: 'Corte exitoso (+5 Pts)' },
+                        { seat: 0, name: 'TÚ', puntosRonda: 25, motivo: '+25 Puntos sueltos' }
+                    ]
+                };
+                window.renderJuego();
+
+                const btnReenganchar = document.getElementById('btn-reenganchar');
+                const modalVisible = document.getElementById('modal-fin-ronda').style.display === 'flex';
+                const btnVisible = btnReenganchar.style.display !== 'none';
+                const btnText = btnReenganchar.innerText;
+
+                // Hacer clic en reengancharse
+                btnReenganchar.click();
+
+                return {
+                    modalVisible,
+                    btnVisible,
+                    btnText,
+                    jugadorEliminado: window.engine.players[0].eliminado,
+                    jugadorPuntos: window.engine.players[0].puntosAcumulados,
+                    partidoFinalizado: window.engine.partidoFinalizado
+                };
+            });
+
+            assert.strictEqual(result.modalVisible, true, 'El modal de fin de ronda debe estar visible');
+            assert.strictEqual(result.btnVisible, true, 'El botón de reengancharse debe estar visible');
+            assert(result.btnText.includes('65 pts'), 'Debe ofrecer reenganche con los puntos del rival (65 pts)');
+            assert.strictEqual(result.jugadorEliminado, false, 'El jugador ya no debe estar eliminado');
+            assert.strictEqual(result.jugadorPuntos, 65, 'El jugador debe tener 65 puntos tras reengancharse');
+            assert.strictEqual(result.partidoFinalizado, false, 'El partido debe continuar activo');
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }

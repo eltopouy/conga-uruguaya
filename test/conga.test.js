@@ -588,6 +588,91 @@ test('Corte en 0 o Conga bloquea la colocación de cartas', () => {
     assert.strictEqual(fit, null, 'No se debe permitir colocar cartas ante Conga');
 });
 
+test('Reenganche funciona correctamente en modo 1 vs 1 (al quedar 1 sobreviviente)', () => {
+    const engine = new CongaEngine({ limitePuntos: 100, permitirReenganche: true });
+    engine.configurarPartida(2);
+
+    engine.players[0].puntosAcumulados = 60;
+    engine.players[1].puntosAcumulados = 105;
+    engine.verificarEliminaciones();
+
+    // En 1 vs 1, el bot queda eliminado y sobrevivientes.length === 1
+    assert.strictEqual(engine.players[1].eliminado, true);
+    assert.strictEqual(engine.partidoFinalizado, true, 'El partido se marca como finalizado temporalmente');
+
+    // Sin embargo, debe permitir el reenganche al no ser Conga Limpia
+    assert.strictEqual(engine.puedeReenganchar(1), true, 'Jugador 1 debe poder reengancharse en 1 vs 1');
+
+    const ok = engine.reenganchar(1);
+    assert.strictEqual(ok, true);
+    assert.strictEqual(engine.players[1].eliminado, false, 'Jugador 1 ya no está eliminado');
+    assert.strictEqual(engine.players[1].puntosAcumulados, 60, 'Reengancha con los puntos del único sobreviviente (60 pts)');
+    assert.strictEqual(engine.partidoFinalizado, false, 'El partido se reanuda al haber reenganche');
+    assert.strictEqual(engine.players[1].reenganches, 1);
+    assert.strictEqual(engine.puedeReenganchar(1), false, 'No puede reengancharse por segunda vez');
+});
+
+test('ordenarMeld ordena escaleras naturales, con comodín intercalado y mazo de 40', () => {
+    const engine48 = new CongaEngine({ deckSize: 48 });
+    const desordenada = [
+        new Carta(6, 'Espada'),
+        new Carta(4, 'Espada'),
+        new Carta(5, 'Espada')
+    ];
+    const ord48 = engine48.ordenarMeld(desordenada);
+    assert.deepStrictEqual(ord48.map(c => c.valor), [4, 5, 6], 'Debe ordenar 4, 5, 6');
+
+    // Escalera con comodín intercalado (3, Comodín, 5)
+    const conComodin = [
+        new Carta(5, 'Copa'),
+        new Carta(0, 'Comodín', true),
+        new Carta(3, 'Copa')
+    ];
+    const ordCom = engine48.ordenarMeld(conComodin);
+    assert.strictEqual(ordCom[0].valor, 3);
+    assert.strictEqual(ordCom[1].esComodin, true);
+    assert.strictEqual(ordCom[2].valor, 5);
+
+    // Mazo de 40 (6, 7, 10 de Oro)
+    const engine40 = new CongaEngine({ deckSize: 40 });
+    const desordenada40 = [
+        new Carta(10, 'Oro'),
+        new Carta(6, 'Oro'),
+        new Carta(7, 'Oro')
+    ];
+    const ord40 = engine40.ordenarMeld(desordenada40);
+    assert.deepStrictEqual(ord40.map(c => c.valor), [6, 7, 10], 'En mazo de 40 cartas, 7 -> 10 es correlativo');
+});
+
+test('colocarCarta mantiene los melds ordenados secuencialmente', () => {
+    const engine = new CongaEngine({ limiteCorte: 5 });
+    engine.configurarPartida(2);
+
+    // Jugador 0 corta con escalera 4, 5, 6 de Basto
+    const p0 = engine.players[0];
+    p0.hand = [
+        new Carta(4, 'Basto'), new Carta(5, 'Basto'), new Carta(6, 'Basto'),
+        new Carta(1, 'Oro'), new Carta(2, 'Oro'), new Carta(1, 'Espada'), new Carta(1, 'Copa'),
+        new Carta(10, 'Espada')
+    ];
+    engine.fase = 'descartar';
+    engine.turnoSeat = 0;
+
+    const p1 = engine.players[1];
+    p1.hand = [new Carta(3, 'Basto', false, 'p1_3basto')];
+
+    const corteInfo = engine.iniciarCorte(0, 7);
+    assert.ok(corteInfo);
+
+    // Jugador 1 acomoda el 3 de Basto
+    const ok = engine.colocarCarta(1, 'p1_3basto');
+    assert.strictEqual(ok, true);
+
+    // La escalera en p0.melds y corteInfo.melds debe ser [3, 4, 5, 6], NO [4, 5, 6, 3]
+    const meldValores = p0.melds[0].map(c => c.valor);
+    assert.deepStrictEqual(meldValores, [3, 4, 5, 6], 'La escalera colocada debe estar ordenada ascendentemente (3, 4, 5, 6)');
+});
+
 console.log('\n========================================');
 console.log(`🏁 RESULTADO: ${passedTests}/${totalTests} tests pasados.`);
 console.log('========================================\n');

@@ -26,7 +26,7 @@ class CongaBot {
         // Simular descartar cada una de las 8 cartas para ver el mejor resultado
         for (let i = 0; i < manoConPozo.length; i++) {
             // No podemos levantar del pozo y tirar exactamente la misma carta en el mismo turno
-            if (manoConPozo[i] === topDiscard) continue;
+            if (i === manoConPozo.length - 1 || (manoConPozo[i] && manoConPozo[i].id === topDiscard.id)) continue;
 
             const manoSimulada = manoConPozo.filter((_, idx) => idx !== i);
             const analysis = engine.detectarMejoresMelds(manoSimulada);
@@ -63,7 +63,7 @@ class CongaBot {
         const bot = engine.players[botSeat];
         if (bot.hand.length !== 8) return null;
 
-        let mejorIndiceDescarte = 0;
+        let mejorIndiceDescarte = -1;
         let menorPuntosSueltos = Infinity;
         let mejorAnalysis = null;
 
@@ -93,6 +93,18 @@ class CongaBot {
                 mejorIndiceDescarte = i;
                 mejorAnalysis = analysis;
             }
+        }
+
+        // Fallback: si no se asignó índice válido, tomar la primera carta permitida
+        if (mejorIndiceDescarte === -1) {
+            for (let i = 0; i < bot.hand.length; i++) {
+                if (!(engine.origenRobo === 'pozo' && engine.cartaRobada && bot.hand[i].id === engine.cartaRobada.id)) {
+                    mejorIndiceDescarte = i;
+                    mejorAnalysis = engine.detectarMejoresMelds(bot.hand.filter((_, idx) => idx !== i));
+                    break;
+                }
+            }
+            if (mejorIndiceDescarte === -1) mejorIndiceDescarte = 0;
         }
 
         // Evaluar si corresponde CORTAR

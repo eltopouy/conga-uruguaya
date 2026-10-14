@@ -128,6 +128,7 @@ async function verificarTurnoBot() {
 
     const currentSeat = engine.turnoSeat;
     const currentPlayer = engine.players[currentSeat];
+    const sessionToken = engine.partidaToken;
 
     if (!currentPlayer || !currentPlayer.isBot || currentPlayer.eliminado) return;
     if (isBotThinking) return;
@@ -135,9 +136,9 @@ async function verificarTurnoBot() {
     isBotThinking = true;
     renderJuego();
 
-    // Tiempo de pensamiento natural (1s - 1.6s)
-    await new Promise(r => setTimeout(r, 1100 + Math.random() * 500));
-    if (!engine || !engine.partidoIniciado || (modoJuego === 'multiplayer' && miRol !== 'creador')) {
+    // Tiempo de pensamiento natural (1s - 1.5s)
+    await new Promise(r => setTimeout(r, 1000 + Math.random() * 400));
+    if (!engine || !engine.partidoIniciado || engine.partidaToken !== sessionToken || (modoJuego === 'multiplayer' && miRol !== 'creador')) {
         isBotThinking = false;
         return;
     }
@@ -149,16 +150,26 @@ async function verificarTurnoBot() {
             engine.robarPozo(currentSeat);
             playSound('card-draw');
         } else {
-            engine.robarMazo(currentSeat);
-            playSound('card-draw');
+            const robada = engine.robarMazo(currentSeat);
+            if (robada) playSound('card-draw');
         }
+
+        // Si el robo causó el agotamiento definitivo del mazo
+        if (engine.fase === 'fin_ronda') {
+            isBotThinking = false;
+            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+            renderJuego();
+            mostrarModalFinRonda();
+            return;
+        }
+
         if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
         renderJuego();
     }
 
     // Tiempo de decisión para el descarte
-    await new Promise(r => setTimeout(r, 1000 + Math.random() * 400));
-    if (!engine || !engine.partidoIniciado || (modoJuego === 'multiplayer' && miRol !== 'creador')) {
+    await new Promise(r => setTimeout(r, 900 + Math.random() * 350));
+    if (!engine || !engine.partidoIniciado || engine.partidaToken !== sessionToken || (modoJuego === 'multiplayer' && miRol !== 'creador')) {
         isBotThinking = false;
         return;
     }
@@ -167,7 +178,7 @@ async function verificarTurnoBot() {
     if (engine.fase === 'descartar' && engine.turnoSeat === currentSeat) {
         const jugada = bot.decidirJugadaDescarte(engine, currentSeat);
         if (jugada) {
-            if (jugada.cortar) {
+            if (jugada.cortar && engine.puedeCortar(currentSeat, jugada.cardIndex)) {
                 // El bot CORTA la ronda
                 isBotThinking = false;
                 iniciarFaseAcomodoUI(currentSeat, jugada.cardIndex);
@@ -194,7 +205,9 @@ async function verificarTurnoBot() {
 
     // Si el siguiente turno también es de un bot
     setTimeout(() => {
-        verificarTurnoBot();
+        if (engine && engine.partidaToken === sessionToken) {
+            verificarTurnoBot();
+        }
     }, 400);
 }
 
@@ -203,6 +216,14 @@ async function verificarTurnoBot() {
 // -------------------------------------------------------------
 function renderJuego() {
     if (!engine || !engine.partidoIniciado) return;
+
+    // Si la ronda terminó (por corte o mazo agotado), asegurar que se visualicen los resultados
+    if (engine.fase === 'fin_ronda') {
+        const modal = document.getElementById('modal-fin-ronda');
+        if (modal && modal.style.display !== 'flex') {
+            mostrarModalFinRonda();
+        }
+    }
 
     const myPlayer = engine.players[miSeat];
 
@@ -858,8 +879,14 @@ document.getElementById('btn-robar-mazo').addEventListener('click', () => {
     if (modoJuego === 'multiplayer' && miRol !== 'creador') {
         window.FirebaseManager.enviarAccion('robar_mazo');
     } else {
-        engine.robarMazo(miSeat);
-        playSound('card-draw');
+        const robada = engine.robarMazo(miSeat);
+        if (engine.fase === 'fin_ronda') {
+            if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+            renderJuego();
+            mostrarModalFinRonda();
+            return;
+        }
+        if (robada) playSound('card-draw');
         if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
         renderJuego();
     }
@@ -884,8 +911,14 @@ document.getElementById('stock-pile-container').addEventListener('click', () => 
         if (modoJuego === 'multiplayer' && miRol !== 'creador') {
             window.FirebaseManager.enviarAccion('robar_mazo');
         } else {
-            engine.robarMazo(miSeat);
-            playSound('card-draw');
+            const robada = engine.robarMazo(miSeat);
+            if (engine.fase === 'fin_ronda') {
+                if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
+                renderJuego();
+                mostrarModalFinRonda();
+                return;
+            }
+            if (robada) playSound('card-draw');
             if (modoJuego === 'multiplayer') window.FirebaseManager.sincronizarEstado(engine);
             renderJuego();
         }
@@ -1123,7 +1156,7 @@ function mostrarModalFinRonda() {
         }
     }
 
-    if (engine.partidoFinalizado) {
+    if (engine.partidoFinalizado && !engine.puedeReenganchar(miSeat)) {
         const ganador = engine.players[engine.ganadorPartido];
         html += `
             <div style="background:linear-gradient(135deg, #f1c40f, #e67e22); color:#000; padding:14px; border-radius:12px; text-align:center; font-weight:800; font-size:1.15rem; margin-top:12px;">
@@ -1135,7 +1168,14 @@ function mostrarModalFinRonda() {
     body.innerHTML = html;
     modal.style.display = 'flex';
 
-    // Activar botón flotante con cuenta regresiva de 4s
+    // Si el usuario toca o hace scroll en el modal para leer las cartas, pausamos el auto-avance
+    const pausarAutoAvance = () => {
+        ocultarBotonSiguienteMano();
+    };
+    modal.onpointerdown = pausarAutoAvance;
+    modal.onwheel = pausarAutoAvance;
+
+    // Activar botón flotante con cuenta regresiva cómoda (8s) si no hay reenganche pendiente
     if (!engine.partidoFinalizado && !engine.puedeReenganchar(miSeat)) {
         iniciarConteoProximaMano();
     }
@@ -1152,7 +1192,7 @@ function iniciarConteoProximaMano() {
     }
 
     btn.style.display = 'block';
-    let count = 4;
+    let count = 8;
     btn.innerText = `🃏 Siguiente Mano (${count}s)`;
 
     autoAdvanceInterval = setInterval(() => {
@@ -1178,6 +1218,7 @@ function ocultarBotonSiguienteMano() {
 function avanzarSiguienteMano() {
     ocultarBotonSiguienteMano();
     cerrarModal('modal-fin-ronda');
+    selectedCardIndex = null;
 
     if (engine.partidoFinalizado) return;
 
