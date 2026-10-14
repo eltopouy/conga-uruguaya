@@ -213,9 +213,132 @@ async function verificarTurnoBot() {
 }
 
 // -------------------------------------------------------------
+// ADAPTACIÓN Y ESCALADO DINÁMICO POR RESOLUCIÓN
+// -------------------------------------------------------------
+function ajustarEscalaResponsiva() {
+    if (typeof window === 'undefined') return;
+    const w = window.innerWidth || document.documentElement.clientWidth || 1024;
+    const h = window.innerHeight || document.documentElement.clientHeight || 768;
+    const root = document.documentElement;
+
+    let cardW, cardH, cardOverlap, handH;
+    let pileW, pileH;
+    let oppCardW, oppCardH, oppCardOverlap;
+    let bannerFontSize, toolbarBtnPad, btnFontSize;
+
+    if (w >= 1400 && h >= 780) {
+        // Pantallas Grandes y Desktop Full HD (1080p, 1440p, 4K)
+        cardW = 142;
+        cardH = 210;
+        cardOverlap = -22;
+        handH = 225;
+        pileW = 120;
+        pileH = 178;
+        oppCardW = 40;
+        oppCardH = 58;
+        oppCardOverlap = -18;
+        bannerFontSize = '1rem';
+        toolbarBtnPad = '11px 20px';
+        btnFontSize = '1rem';
+    } else if (w >= 1050 && h >= 680) {
+        // Laptops de 1366x768 / Escritorios medianos
+        cardW = 128;
+        cardH = 190;
+        cardOverlap = -18;
+        handH = 205;
+        pileW = 110;
+        pileH = 162;
+        oppCardW = 35;
+        oppCardH = 51;
+        oppCardOverlap = -15;
+        bannerFontSize = '0.95rem';
+        toolbarBtnPad = '10px 18px';
+        btnFontSize = '0.95rem';
+    } else if (w >= 800 && h >= 600) {
+        // Tablets y laptops compactas
+        cardW = 114;
+        cardH = 168;
+        cardOverlap = -16;
+        handH = 180;
+        pileW = 98;
+        pileH = 145;
+        oppCardW = 30;
+        oppCardH = 44;
+        oppCardOverlap = -13;
+        bannerFontSize = '0.92rem';
+        toolbarBtnPad = '9px 15px';
+        btnFontSize = '0.9rem';
+    } else if (h < 600 && w >= 600) {
+        // Modo horizontal en pantallas de baja altura (Landscape móvil / Notebook baja)
+        cardH = Math.max(96, Math.min(145, Math.round(h * 0.22)));
+        cardW = Math.round(cardH / 1.48);
+        cardOverlap = -12;
+        handH = cardH + 12;
+        pileH = Math.max(82, Math.min(125, Math.round(h * 0.19)));
+        pileW = Math.round(pileH / 1.48);
+        oppCardH = Math.max(28, Math.min(38, Math.round(h * 0.058)));
+        oppCardW = Math.round(oppCardH / 1.48);
+        oppCardOverlap = -10;
+        bannerFontSize = '0.82rem';
+        toolbarBtnPad = '6px 12px';
+        btnFontSize = '0.82rem';
+    } else if (w <= 600) {
+        // Móviles en vertical
+        cardW = Math.max(72, Math.min(92, Math.round(w * 0.185)));
+        cardH = Math.round(cardW * 1.48);
+        cardOverlap = -12;
+        handH = cardH + 12;
+        pileW = Math.max(68, Math.min(84, Math.round(w * 0.175)));
+        pileH = Math.round(pileW * 1.48);
+        oppCardW = 26;
+        oppCardH = 38;
+        oppCardOverlap = -11;
+        bannerFontSize = '0.85rem';
+        toolbarBtnPad = '8px 12px';
+        btnFontSize = '0.84rem';
+    } else {
+        // Formatos intermedios
+        cardW = 104;
+        cardH = 154;
+        cardOverlap = -14;
+        handH = 165;
+        pileW = 90;
+        pileH = 133;
+        oppCardW = 28;
+        oppCardH = 41;
+        oppCardOverlap = -12;
+        bannerFontSize = '0.9rem';
+        toolbarBtnPad = '8px 14px';
+        btnFontSize = '0.88rem';
+    }
+
+    // Asegurar que el ancho de 8 cartas quepa en la ventana sin desbordar
+    const maxAnchoMano = w - 24;
+    const anchoEstimado = cardW + 7 * (cardW + cardOverlap);
+    if (anchoEstimado > maxAnchoMano) {
+        const overlapCalculado = Math.floor((maxAnchoMano - 8 * cardW) / 7);
+        cardOverlap = Math.min(-8, overlapCalculado);
+    }
+
+    root.style.setProperty('--card-w', `${cardW}px`);
+    root.style.setProperty('--card-h', `${cardH}px`);
+    root.style.setProperty('--card-overlap', `${cardOverlap}px`);
+    root.style.setProperty('--hand-container-h', `${handH}px`);
+    root.style.setProperty('--pile-w', `${pileW}px`);
+    root.style.setProperty('--pile-h', `${pileH}px`);
+    root.style.setProperty('--opp-card-w', `${oppCardW}px`);
+    root.style.setProperty('--opp-card-h', `${oppCardH}px`);
+    root.style.setProperty('--opp-card-overlap', `${oppCardOverlap}px`);
+    root.style.setProperty('--banner-font-size', bannerFontSize);
+    root.style.setProperty('--toolbar-btn-pad', toolbarBtnPad);
+    root.style.setProperty('--btn-font-size', btnFontSize);
+}
+
+// -------------------------------------------------------------
 // RENDERIZADO VISUAL DEL JUEGO
 // -------------------------------------------------------------
 function renderJuego() {
+    ajustarEscalaResponsiva();
     if (!engine || !engine.partidoIniciado) return;
 
     // Si la ronda terminó (por corte o mazo agotado), asegurar que se visualicen los resultados
@@ -260,7 +383,7 @@ function renderJuego() {
 
                 badge.innerHTML = `
                     <div class="opponent-name">${p.name} ${p.eliminado ? '💀 (Eliminado)' : ''}</div>
-                    <div class="opponent-score">${p.puntosAcumulados} pts / ${p.hand.length} cartas</div>
+                    <div class="opponent-score">${p.puntosAcumulados} pts</div>
                     <div class="opponent-cards-mini">${miniCardsHTML}</div>
                 `;
                 oppArea.appendChild(badge);
@@ -1738,5 +1861,8 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// Inicializar configuración al cargar
+// Inicializar configuración y escala responsiva al cargar
 cargarConfigLocal();
+window.addEventListener('resize', ajustarEscalaResponsiva);
+window.addEventListener('orientationchange', ajustarEscalaResponsiva);
+ajustarEscalaResponsiva();

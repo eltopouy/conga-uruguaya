@@ -600,6 +600,49 @@ const assert = require('assert');
             await page.close();
         });
 
+        // TEST 15: Botones dicen 'Robar del Mazo' y 'Robar del Pozo', rival no muestra leyenda 'pts / carta', y escalado dinámico por resolución
+        await runTest('Botones de robo con texto completo, puntaje limpio de rival y escalado dinámico por resolución', async () => {
+            const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
+
+            // 1. Verificar texto de los botones de robar
+            const txtRobarMazo = await page.innerText('#btn-robar-mazo');
+            const txtRobarPozo = await page.innerText('#btn-robar-pozo');
+            assert(txtRobarMazo.includes('Robar del Mazo'), `El botón debe decir "Robar del Mazo", recibido: "${txtRobarMazo}"`);
+            assert(txtRobarPozo.includes('Robar del Pozo'), `El botón debe decir "Robar del Pozo", recibido: "${txtRobarPozo}"`);
+
+            // 2. Iniciar partida 1v1 en resolución Full HD
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(400);
+
+            // 3. Verificar que el puntaje del bot rival no tenga "cartas" ni "pts / carta"
+            const oppScoreText = await page.innerText('.opponent-score');
+            assert(!oppScoreText.includes('carta'), `La leyenda no debe contener "carta", recibido: "${oppScoreText}"`);
+            assert(!oppScoreText.includes('/'), `La leyenda no debe contener "/", recibido: "${oppScoreText}"`);
+            assert(oppScoreText.endsWith('pts'), `La leyenda debe terminar en "pts", recibido: "${oppScoreText}"`);
+
+            // 4. Verificar variables CSS de escalado dinámico en Full HD (1920x1080)
+            const desktopCardW = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--card-w').trim());
+            const desktopOppCardW = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--opp-card-w').trim());
+            assert.strictEqual(desktopCardW, '142px', 'El ancho de cartas en escritorio 1080p debe ser 142px');
+            assert.strictEqual(desktopOppCardW, '40px', 'El ancho de cartas de rivales en escritorio debe ser 40px');
+
+            // 5. Cambio de resolución a Laptop (1366x768)
+            await page.setViewportSize({ width: 1366, height: 768 });
+            await page.waitForTimeout(200);
+            const laptopCardW = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--card-w').trim());
+            assert.strictEqual(laptopCardW, '128px', 'El ancho de cartas en laptop debe ser 128px');
+
+            // 6. Cambio de resolución a Mobile (390x844)
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.waitForTimeout(200);
+            const mobileCardW = await page.evaluate(() => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w')));
+            assert(mobileCardW <= 85, `El ancho de cartas en móvil debe ser <= 85px, recibido: ${mobileCardW}px`);
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }

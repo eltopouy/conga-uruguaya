@@ -9,6 +9,20 @@
     --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     --card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
     --font-main: 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+    /* Variables de tamaño dinámico calculadas en tiempo real por resolución */
+    --card-w: 126px;
+    --card-h: 186px;
+    --card-overlap: -16px;
+    --pile-w: 108px;
+    --pile-h: 160px;
+    --opp-card-w: 32px;
+    --opp-card-h: 46px;
+    --opp-card-overlap: -14px;
+    --hand-container-h: 195px;
+    --banner-font-size: 0.95rem;
+    --toolbar-btn-pad: 10px 18px;
+    --btn-font-size: 0.95rem;
 }
 
 * {
@@ -130,39 +144,43 @@ body {
 }
 
 .opponent-score {
-    font-size: 0.8rem;
-    color: #bbb;
+    font-size: 0.85rem;
+    color: var(--gold);
+    font-weight: 700;
 }
 
 .opponent-cards-mini {
     display: flex;
     justify-content: center;
-    margin-top: 4px;
+    margin-top: 5px;
+    align-items: center;
 }
 
 .mini-card-back {
-    width: 22px;
-    height: 32px;
+    width: var(--opp-card-w, 32px);
+    height: var(--opp-card-h, 46px);
     background: url('../assets/cards_tatu/carta_reverso.png') no-repeat center/cover;
-    border-radius: 3px;
-    margin-left: -12px;
-    box-shadow: -1px 0 3px rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    margin-left: var(--opp-card-overlap, -14px);
+    box-shadow: -2px 0 4px rgba(0, 0, 0, 0.5);
+    transition: transform 0.2s ease, width 0.2s ease, height 0.2s ease;
 }
 .mini-card-back:first-child {
     margin-left: 0;
 }
 
 .mini-card-front {
-    width: 22px;
-    height: 32px;
+    width: var(--opp-card-w, 32px);
+    height: var(--opp-card-h, 46px);
     background-size: 100% 100%;
     background-position: center;
     background-repeat: no-repeat;
-    border-radius: 3px;
-    margin-left: -12px;
-    box-shadow: -1px 0 3px rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    margin-left: var(--opp-card-overlap, -14px);
+    box-shadow: -2px 0 4px rgba(0, 0, 0, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.25);
     background-color: #fff;
+    transition: transform 0.2s ease, width 0.2s ease, height 0.2s ease;
 }
 .mini-card-front:first-child {
     margin-left: 0;
@@ -204,8 +222,8 @@ body {
 
 /* Cartas de Mazo y Pozo */
 .card-pile {
-    width: clamp(80px, 14vw, 105px);
-    height: clamp(120px, 21vw, 158px);
+    width: var(--pile-w, clamp(80px, 14vw, 115px));
+    height: var(--pile-h, clamp(120px, 21vw, 170px));
     border-radius: 8px;
     position: relative;
     box-shadow: var(--card-shadow);
@@ -249,7 +267,7 @@ body {
     border-radius: 20px;
     padding: 6px 18px;
     margin: 0 auto 6px auto;
-    font-size: 0.95rem;
+    font-size: var(--banner-font-size, 0.95rem);
     font-weight: 600;
     color: #fff;
     display: flex;
@@ -430,7 +448,7 @@ body {
     justify-content: center;
     align-items: flex-end;
     padding-bottom: 12px;
-    min-height: 175px;
+    min-height: var(--hand-container-h, 185px);
     z-index: 40;
 }
 
@@ -443,19 +461,19 @@ body {
 
 /* Cartas de la mano */
 .hand-card {
-    width: clamp(86px, 15.5vw, 114px);
-    height: clamp(128px, 23vw, 170px);
+    width: var(--card-w, clamp(86px, 15.5vw, 130px));
+    height: var(--card-h, clamp(128px, 23vw, 192px));
     background-size: 100% 100%;
     background-position: center;
     background-repeat: no-repeat;
     border-radius: 8px;
-    margin: 0 -14px;
+    margin: 0 var(--card-overlap, -14px);
     cursor: grab;
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
     box-shadow: var(--card-shadow);
-    transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.2s ease;
+    transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.2s ease, width 0.2s ease, height 0.2s ease;
     position: relative;
     transform-origin: bottom center;
 }
@@ -522,9 +540,9 @@ body {
     background: rgba(255, 255, 255, 0.15);
     border: 1px solid rgba(255, 255, 255, 0.25);
     color: #fff;
-    font-size: 0.95rem;
+    font-size: var(--btn-font-size, 0.95rem);
     font-weight: 700;
-    padding: 10px 18px;
+    padding: var(--toolbar-btn-pad, 10px 18px);
     border-radius: 10px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -822,8 +840,8 @@ body {
     }
 
     .btn-action {
-        padding: 8px 12px;
-        font-size: 0.85rem;
+        padding: var(--toolbar-btn-pad, 8px 12px);
+        font-size: var(--btn-font-size, 0.85rem);
     }
 
     .deadwood-indicator {
@@ -846,23 +864,24 @@ body {
     }
     #turn-status-banner {
         padding: 3px 12px;
-        font-size: 0.82rem;
+        font-size: var(--banner-font-size, 0.82rem);
         margin-bottom: 2px;
     }
     .card-pile {
-        width: 68px;
-        height: 100px;
+        width: var(--pile-w, 68px);
+        height: var(--pile-h, 100px);
     }
     #center-table {
         margin: 2px 0;
     }
     #player-hand-container {
-        min-height: 120px;
+        min-height: var(--hand-container-h, 120px);
         padding-bottom: 2px;
     }
     .hand-card {
-        width: 68px;
-        height: 102px;
+        width: var(--card-w, 68px);
+        height: var(--card-h, 102px);
+        margin: 0 var(--card-overlap, -12px);
     }
     #player-actions-toolbar {
         padding: 4px 8px;
