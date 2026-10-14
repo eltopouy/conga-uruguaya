@@ -458,6 +458,112 @@ const assert = require('assert');
             await page.close();
         });
 
+        // TEST 13: Descarte por doble clic (PC) y doble tap (Mobile)
+        await runTest('Doble clic con mouse o doble tap en pantalla táctil descarta la carta directamente', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
+
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(600);
+
+            let cards = await page.$$('#player-hand-fan .hand-card');
+            assert.strictEqual(cards.length, 8, 'Inicia con 8 cartas');
+
+            // 1. Simular doble clic de mouse en la primera carta
+            await cards[0].dblclick();
+            await page.waitForTimeout(400);
+
+            // Tras descartar por doble clic, la mano pasa a 7 cartas
+            cards = await page.$$('#player-hand-fan .hand-card');
+            assert.strictEqual(cards.length, 7, 'Tras doble clic se descarta y quedan 7 cartas');
+
+            // 2. Simular doble tap táctil (dos clicks consecutivos dentro de 200ms)
+            // Ponemos al jugador en fase descartar con 8 cartas
+            await page.evaluate(() => {
+                window.engine.turnoSeat = 0;
+                window.engine.fase = 'descartar';
+                window.engine.players[0].hand.push(new window.Carta(1, 'Espada', false, 'test_double_tap'));
+                window.renderJuego();
+            });
+            await page.waitForTimeout(200);
+
+            cards = await page.$$('#player-hand-fan .hand-card');
+            assert.strictEqual(cards.length, 8);
+
+            // Dos clicks rápidos sucesivos (doble tap)
+            await page.click('#player-hand-fan .hand-card');
+            await page.waitForTimeout(100);
+            await page.click('#player-hand-fan .hand-card');
+            await page.waitForTimeout(400);
+
+            cards = await page.$$('#player-hand-fan .hand-card');
+            assert.strictEqual(cards.length, 7, 'Tras doble tap se descarta y quedan 7 cartas');
+
+            await page.close();
+        });
+
+        // TEST 14: Seleccionar carta habilita botón Cortar cuando se cumplen las condiciones
+        await runTest('Seleccionar carta habilita botón Cortar cuando están dadas las condiciones y permite cortar', async () => {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            await page.route('**/*.firebaseio.com/**', route => route.abort());
+            await page.goto(filePath, { waitUntil: 'domcontentloaded' });
+
+            await page.click('#btn-start-1v1');
+            await page.waitForTimeout(500);
+
+            // Configurar mano que pueda cortar: escalera 4-5-6 Espada (meld) + 1-2-3 Oro (meld) + 2 Copa (2 pts deadwood) + 12 Basto (descarte)
+            await page.evaluate(() => {
+                window.engine.players[0].hand = [
+                    new window.Carta(4, 'Espada', false, 'c_4esp'),
+                    new window.Carta(5, 'Espada', false, 'c_5esp'),
+                    new window.Carta(6, 'Espada', false, 'c_6esp'),
+                    new window.Carta(1, 'Oro', false, 'c_1oro'),
+                    new window.Carta(2, 'Oro', false, 'c_2oro'),
+                    new window.Carta(3, 'Oro', false, 'c_3oro'),
+                    new window.Carta(2, 'Copa', false, 'c_2copa'),
+                    new window.Carta(12, 'Basto', false, 'c_12basto')
+                ];
+                window.engine.turnoSeat = 0;
+                window.engine.fase = 'descartar';
+                window.renderJuego();
+            });
+            await page.waitForTimeout(300);
+
+            // Antes de seleccionar carta, el botón cortar está deshabilitado
+            let btnCortarDisabled = await page.evaluate(() => document.getElementById('btn-cortar').disabled);
+            assert.strictEqual(btnCortarDisabled, true, 'El botón cortar debe estar deshabilitado sin carta seleccionada');
+
+            // Seleccionar la carta índice 7 (12 de Basto) para descartar
+            const cards = await page.$$('#player-hand-fan .hand-card');
+            await cards[7].click();
+            await page.waitForTimeout(300);
+
+            // El botón cortar ahora debe estar habilitado y tener la clase can-cut
+            const cutStatus = await page.evaluate(() => {
+                const btn = document.getElementById('btn-cortar');
+                return {
+                    disabled: btn.disabled,
+                    hasCanCut: btn.classList.contains('can-cut'),
+                    text: btn.innerText
+                };
+            });
+
+            assert.strictEqual(cutStatus.disabled, false, 'El botón cortar debe habilitarse');
+            assert.strictEqual(cutStatus.hasCanCut, true, 'El botón cortar debe tener la clase can-cut');
+            assert(cutStatus.text.includes('2 pts'), 'Debe reflejar que corta con 2 pts');
+
+            // Clic en el botón cortar para iniciar corte
+            await page.click('#btn-cortar');
+            await page.waitForTimeout(400);
+
+            // Debe haber pasado a fase acomodo y mostrar la mesa de corte
+            const meldsAreaVisible = await page.isVisible('#table-melds-area');
+            assert.strictEqual(meldsAreaVisible, true, 'Al cortar se entra en la fase de acomodo y se muestra la mesa');
+
+            await page.close();
+        });
+
     } finally {
         if (browser) await browser.close();
     }

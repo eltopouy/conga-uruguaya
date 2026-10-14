@@ -13,6 +13,7 @@ let miRol = 'creador'; // 'creador' | 'invitado'
 let selectedCardIndex = null;
 let autoAdvanceInterval = null;
 let isBotThinking = false;
+let lastCardTapTracker = { cardId: null, timestamp: 0 };
 
 // Helpers de sonido
 function playSound(name) {
@@ -605,29 +606,70 @@ function renderJuego() {
             btnConfirmarCorte.style.display = 'inline-flex';
             btnConfirmarCorte.innerText = "📊 Ver Resultados";
         }
-    } else {
+    } else if (engine.fase === 'robar') {
         if (btnRobarMazo) {
-            btnRobarMazo.style.display = '';
-            btnRobarMazo.disabled = !(esMiTurno && engine.fase === 'robar');
+            btnRobarMazo.style.display = 'inline-flex';
+            btnRobarMazo.disabled = !esMiTurno;
         }
         if (btnRobarPozo) {
-            btnRobarPozo.style.display = '';
-            btnRobarPozo.disabled = !(esMiTurno && engine.fase === 'robar' && engine.discardPile.length > 0);
+            btnRobarPozo.style.display = 'inline-flex';
+            btnRobarPozo.disabled = !(esMiTurno && engine.discardPile.length > 0);
         }
+        if (btnDescartar) btnDescartar.style.display = 'none';
+        if (btnCortar) btnCortar.style.display = 'none';
+        if (btnAuto) btnAuto.style.display = 'inline-flex';
+        if (btnAcomodarTodas) btnAcomodarTodas.style.display = 'none';
+        if (btnConfirmarCorte) btnConfirmarCorte.style.display = 'none';
+    } else {
+        // Fase 'descartar'
+        if (btnRobarMazo) btnRobarMazo.style.display = 'none';
+        if (btnRobarPozo) btnRobarPozo.style.display = 'none';
+
+        const hasCardSelected = (selectedCardIndex !== null && selectedCardIndex >= 0 && myPlayer && selectedCardIndex < myPlayer.hand.length);
+
         if (btnDescartar) {
-            btnDescartar.style.display = '';
-            btnDescartar.disabled = !(esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null);
+            btnDescartar.style.display = 'inline-flex';
+            const canDiscard = esMiTurno && hasCardSelected;
+            btnDescartar.disabled = !canDiscard;
+            if (canDiscard) {
+                btnDescartar.classList.add('can-discard');
+                btnDescartar.title = "Descartar la carta seleccionada al pozo";
+            } else {
+                btnDescartar.classList.remove('can-discard');
+                btnDescartar.title = "Selecciona una carta o haz doble clic / doble tap para descartar";
+            }
         }
+
         if (btnCortar) {
-            btnCortar.style.display = '';
-            const canCut = esMiTurno && engine.fase === 'descartar' && selectedCardIndex !== null && engine.puedeCortar(miSeat, selectedCardIndex);
-            btnCortar.disabled = !canCut;
-            if (canCut) btnCortar.classList.add('can-cut');
-            else btnCortar.classList.remove('can-cut');
+            btnCortar.style.display = 'inline-flex';
+            const canCutSelected = esMiTurno && hasCardSelected && engine.puedeCortar(miSeat, selectedCardIndex);
+            btnCortar.disabled = !canCutSelected;
+
+            if (canCutSelected) {
+                btnCortar.classList.add('can-cut');
+                btnCortar.title = "¡Cumples las condiciones para cortar la ronda!";
+                const manoSim = myPlayer.hand.filter((_, i) => i !== selectedCardIndex);
+                const simAnalysis = engine.detectarMejoresMelds(manoSim);
+                if (simAnalysis.esConga) {
+                    btnCortar.innerText = simAnalysis.esCongaLimpia ? "👑 ¡CONGA LIMPIA!" : "🎉 ¡CONGA!";
+                } else if (simAnalysis.esCorteCero) {
+                    btnCortar.innerText = "✂️ Cortar (0 pts)";
+                } else {
+                    btnCortar.innerText = `✂️ Cortar (${simAnalysis.puntosSueltos} pts)`;
+                }
+            } else {
+                btnCortar.classList.remove('can-cut');
+                if (esMiTurno && !hasCardSelected && engine.puedeCortar(miSeat)) {
+                    btnCortar.innerText = "✂️ Cortar (Elige carta)";
+                    btnCortar.title = "Tienes juego para cortar: selecciona la carta a descartar";
+                } else {
+                    btnCortar.innerText = "✂️ Cortar";
+                    btnCortar.title = "Debes tener 5 puntos sueltos o menos (o Conga) para cortar";
+                }
+            }
         }
-        if (btnAuto) {
-            btnAuto.style.display = '';
-        }
+
+        if (btnAuto) btnAuto.style.display = 'inline-flex';
         if (btnAcomodarTodas) btnAcomodarTodas.style.display = 'none';
         if (btnConfirmarCorte) btnConfirmarCorte.style.display = 'none';
     }
@@ -874,7 +916,31 @@ function habilitarArrastreReorden(cardDOM, index, hand, container) {
             return;
         }
         e.stopPropagation();
+
+        const card = hand[index];
+        const now = Date.now();
+        const isDoubleTap = (lastCardTapTracker.cardId && card && lastCardTapTracker.cardId === card.id && (now - lastCardTapTracker.timestamp) < 380);
+
+        if (isDoubleTap && engine.turnoSeat === miSeat && engine.fase === 'descartar') {
+            lastCardTapTracker = { cardId: null, timestamp: 0 };
+            selectedCardIndex = index;
+            ejecutarDescarteHumano();
+            return;
+        }
+
+        lastCardTapTracker = { cardId: card ? card.id : null, timestamp: now };
         seleccionarCarta(index);
+    });
+
+    // Doble clic con mouse en computadoras para descartar directo
+    cardDOM.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (engine.turnoSeat === miSeat && engine.fase === 'descartar') {
+            lastCardTapTracker = { cardId: null, timestamp: 0 };
+            selectedCardIndex = index;
+            ejecutarDescarteHumano();
+        }
     });
 }
 window.habilitarArrastreReorden = habilitarArrastreReorden;
@@ -951,7 +1017,11 @@ document.getElementById('discard-pile-container').addEventListener('click', () =
 
 // Descartar Carta Seleccionada
 function ejecutarDescarteHumano() {
-    if (engine.turnoSeat !== miSeat || engine.fase !== 'descartar' || selectedCardIndex === null) return;
+    if (engine.turnoSeat !== miSeat || engine.fase !== 'descartar') return;
+    if (selectedCardIndex === null || selectedCardIndex < 0 || !engine.players[miSeat] || selectedCardIndex >= engine.players[miSeat].hand.length) {
+        alert("Toca una carta de tu mano para seleccionarla o haz doble clic / doble tap sobre ella para tirarla.");
+        return;
+    }
     const player = engine.players[miSeat];
     const carta = player ? player.hand[selectedCardIndex] : null;
     if (engine.origenRobo === 'pozo' && engine.cartaRobada && carta && carta.id === engine.cartaRobada.id) {
@@ -960,6 +1030,7 @@ function ejecutarDescarteHumano() {
     }
     const idx = selectedCardIndex;
     selectedCardIndex = null;
+    lastCardTapTracker = { cardId: null, timestamp: 0 };
 
     if (modoJuego === 'multiplayer' && miRol !== 'creador') {
         window.FirebaseManager.enviarAccion('descartar', { cardIndex: idx });
@@ -975,9 +1046,18 @@ document.getElementById('btn-descartar').addEventListener('click', ejecutarDesca
 
 // Cortar Ronda
 document.getElementById('btn-cortar').addEventListener('click', () => {
-    if (engine.turnoSeat !== miSeat || engine.fase !== 'descartar' || selectedCardIndex === null) return;
+    if (engine.turnoSeat !== miSeat || engine.fase !== 'descartar') return;
+    if (selectedCardIndex === null || selectedCardIndex < 0 || !engine.players[miSeat] || selectedCardIndex >= engine.players[miSeat].hand.length) {
+        alert("Selecciona primero la carta con la que deseas descartar para cortar.");
+        return;
+    }
+    if (!engine.puedeCortar(miSeat, selectedCardIndex)) {
+        alert("No cumples las condiciones para cortar con esta carta. Debes tener 5 puntos sueltos o menos, o Conga.");
+        return;
+    }
     const idx = selectedCardIndex;
     selectedCardIndex = null;
+    lastCardTapTracker = { cardId: null, timestamp: 0 };
 
     if (modoJuego === 'multiplayer' && miRol !== 'creador') {
         window.FirebaseManager.enviarAccion('cortar', { cardIndex: idx });
